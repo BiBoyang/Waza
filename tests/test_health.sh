@@ -43,4 +43,23 @@ mkdir -p "$fsmonitor_repo"
   test ! -e fsmonitor-marker
 )
 
+# A copied trusted collector must fail closed when its own helpers are absent.
+# It must never execute project-local lookalikes from the audited repository.
+lookalike_repo="$tmpdir/lookalike"
+trusted_health="$tmpdir/trusted-health/scripts"
+mkdir -p "$lookalike_repo/skills/health/scripts" "$trusted_health"
+cp "$ROOT/skills/health/scripts/collect-data.sh" "$trusted_health/collect-data.sh"
+for helper in check-agent-context.sh check-maintainability.sh; do
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'printf executed >> project-helper-marker' \
+    > "$lookalike_repo/skills/health/scripts/$helper"
+  chmod +x "$lookalike_repo/skills/health/scripts/$helper"
+done
+(
+  cd "$lookalike_repo"
+  HOME="$tmpdir" bash "$trusted_health/collect-data.sh" auto > "$tmpdir/lookalike.out"
+  test ! -e project-helper-marker
+)
+
 echo "health smoke: ok"

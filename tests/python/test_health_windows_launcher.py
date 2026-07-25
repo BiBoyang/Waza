@@ -179,8 +179,10 @@ def test_skill_routes_windows_commands_through_launcher():
     text = SKILL.read_text(encoding="utf-8")
 
     assert "pwsh " not in text
+    assert "<skill-base-dir>/scripts/run-health.ps1" in text
+    assert "<skill-base-dir>/skills/health/scripts/run-health.ps1" in text
     for action in ACTION_SCRIPTS:
-        assert f'run-health.ps1" {action}' in text
+        assert f'"$HEALTH_LAUNCHER" {action}' in text
     assert 'bash "$HEALTH_SCRIPT"' in text
 
 

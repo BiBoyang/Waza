@@ -30,23 +30,8 @@ CONVO_DIR="$HOME/.claude/projects/-${PROJECT_KEY}"
 
 resolve_health_helper() {
   local name="$1"
-  local installed_path=""
-  local candidate=""
-
-  for candidate in "$SCRIPT_DIR/$name" "./skills/health/scripts/$name"; do
-    if [ -f "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
-
-  installed_path="$(npx skills path tw93/Waza 2>/dev/null || true)"
-  if [ -n "$installed_path" ] && [ -f "$installed_path/skills/health/scripts/$name" ]; then
-    printf '%s\n' "$installed_path/skills/health/scripts/$name"
-    return 0
-  fi
-
-  return 1
+  [ -f "$SCRIPT_DIR/$name" ] || return 1
+  printf '%s\n' "$SCRIPT_DIR/$name"
 }
 
 count_project_files() {

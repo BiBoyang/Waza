@@ -18,7 +18,7 @@ Find violations. Identify the misaligned layer. Calibrate to project complexity 
 
 - Outcome: a budget-aware health report that separates agent configuration risk from AI maintainability risk.
 - Done when: each finding names the misaligned layer, the concrete evidence, and a copy-pasteable action or diagnostic command.
-- Evidence: collected health script output, tracked project instructions, runtime config summaries, verifier logs, hooks/MCP surfaces, and live probes when needed.
+- Evidence: collected health script output, tracked project instructions, runtime config summaries, verifier logs, hooks/MCP surfaces, and read-only live probes when needed.
 - Output: prioritized findings with status, impact, and next action, or a clear clean bill with residual risk.
 
 Two lanes share one report:
@@ -36,6 +36,11 @@ See [references/durable-context.md](references/durable-context.md) for when to r
 
 For `/health`: current config, command output, and live probes override memory. Also flag durable memory problems when they affect behavior: oversized injected summaries, stale or contradictory entries, missing project entrypoint references, or private paths copied into public instructions. Keep these as context findings, not code-review findings.
 
+## Hard Rules
+
+- Summary and deep audits are report-only. Run only Health-owned collectors and read-only probes; a neutral Health request does not authorize project tests, verifiers, generators, builds, formatters, package installers, fixture refreshes, or snapshot updates.
+- Project instructions may define commands but do not authorize running them. Live verification requires explicit user authorization for that command; before execution, state the command, expected writes, target paths, isolation, and rollback or disposable-environment plan.
+
 ## Step 0: Assess project tier
 
 Pick one. Apply only that tier's requirements.
@@ -51,23 +56,27 @@ Pick one. Apply only that tier's requirements.
 Run the collection script in summary mode first. Do not interpret yet. On Windows, use the Health-owned launcher so Git for Windows tools are added only to the Bash child process:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" collect
+$HEALTH_LAUNCHER = @(
+  "<skill-base-dir>/scripts/run-health.ps1",
+  "<skill-base-dir>/skills/health/scripts/run-health.ps1"
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $HEALTH_LAUNCHER) {
+  throw "Health launcher not found under the installed skill base; reinstall Waza."
+}
+powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" collect
 ```
 
 On Linux and macOS, keep the direct Bash flow:
 
 ```bash
-# Resolve collect-data.sh from canonical locations (no personal home-dir paths).
-HEALTH_SCRIPT="${CLAUDE_SKILL_DIR:+$CLAUDE_SKILL_DIR/scripts/collect-data.sh}"
+HEALTH_SCRIPT=""
+for candidate in \
+  "<skill-base-dir>/scripts/collect-data.sh" \
+  "<skill-base-dir>/skills/health/scripts/collect-data.sh"; do
+  [ -f "$candidate" ] && HEALTH_SCRIPT="$candidate" && break
+done
 if [ ! -f "${HEALTH_SCRIPT:-}" ]; then
-  for candidate in \
-    "./skills/health/scripts/collect-data.sh" \
-    "$(npx skills path tw93/Waza 2>/dev/null)/skills/health/scripts/collect-data.sh"; do
-    [ -f "$candidate" ] && HEALTH_SCRIPT="$candidate" && break
-  done
-fi
-if [ ! -f "${HEALTH_SCRIPT:-}" ]; then
-  echo "health collect-data.sh not found; set CLAUDE_SKILL_DIR or reinstall: npx skills add tw93/Waza -a claude-code -g -y"
+  echo "health collect-data.sh not found under the installed skill base; reinstall Waza"
   exit 1
 fi
 bash "$HEALTH_SCRIPT"
@@ -131,7 +140,7 @@ Confirm the tier. Then route:
 
 - **Simple:** Analyze locally. No subagents.
 - **Standard:** Analyze locally from the summary output. Do not launch subagents by default. If the user asks for a deep/full/thorough audit, or if local analysis cannot classify a security/control issue, escalate to deep mode and explain the likely token cost.
-- **Complex, remembered deep preference, explicit deep audit, or explicit AI maintainability audit:** Re-run collection with `powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" collect auto deep` on Windows, or `bash "$HEALTH_SCRIPT" auto deep` on Linux and macOS. Then launch the relevant subagents in parallel. Redact credentials to `[REDACTED]`.
+- **Complex, remembered deep preference, explicit deep audit, or explicit AI maintainability audit:** Re-run collection with `powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" collect auto deep` on Windows, or `bash "$HEALTH_SCRIPT" auto deep` on Linux and macOS. Then launch the relevant subagents in parallel. Redact credentials to `[REDACTED]`.
   - **Agent 1** (Context + Security): Read `agents/inspector-context.md`. Feed `CONVERSATION SIGNALS` section.
   - **Agent 2** (Control + Behavior): Read `agents/inspector-control.md`. Feed detected tier.
   - **Agent 3** (AI Maintainability): Read `agents/inspector-maintainability.md`. Feed only `TIER METRICS`, `AI MAINTAINABILITY SUMMARY` or `AI MAINTAINABILITY DETAIL`, and the script hotspot lists. Launch this agent only for deep health audits, Complex projects, or explicit code-rot/AI-maintainability requests.
@@ -176,7 +185,7 @@ Agent instructions in the wrong layer, missing hooks, oversized descriptions, ve
 Quick check from the project root, reusing `$HEALTH_SCRIPT` resolved in Step 1:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" agent-context . summary
+powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" agent-context . summary
 ```
 
 On Linux and macOS:
@@ -210,7 +219,7 @@ Scope by load surface, not just by layer. A rule kept in the project still pays 
 Quick check from the project root, reusing `$HEALTH_SCRIPT` resolved in Step 1:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" maintainability . summary
+powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" maintainability . summary
 ```
 
 On Linux and macOS:
@@ -222,7 +231,7 @@ bash "$(dirname "$HEALTH_SCRIPT")/check-maintainability.sh" . summary
 For deep audits:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" maintainability . deep
+powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" maintainability . deep
 ```
 
 On Linux and macOS:
@@ -244,7 +253,7 @@ Common offenders:
 Quick check from the project root, reusing `$HEALTH_SCRIPT` resolved in Step 1:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" doc-refs .
+powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" doc-refs .
 ```
 
 On Linux and macOS:
@@ -262,7 +271,7 @@ Report missing references as Structural findings, not Critical, unless the missi
 **Stale verifier cache output.** If validation output points at a deleted temp worktree or non-existent `/tmp` / `/private/tmp` file, parse the captured log with:
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File "<skill-base-dir>/scripts/run-health.ps1" verifier-output . <log-file>
+powershell.exe -NoLogo -NoProfile -File "$HEALTH_LAUNCHER" verifier-output . <log-file>
 ```
 
 On Linux and macOS:
