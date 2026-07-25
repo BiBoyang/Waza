@@ -246,7 +246,7 @@ def check_durable_context(root: Path, skill_files: list[Path]):
     """Durable context rules must stay portable and evidence-bound.
 
     Each skill in DURABLE_CONTEXT_SKILLS links to rules/durable-context.md for the
-    shared preamble (when to read, read order, type mapping) and then adds
+    shared preamble (scope, current-state-wins, redaction gate) and then adds
     skill-specific guidance with current-state override evidence. The shared
     rules file itself is checked once for the "raw transcripts" guard.
     """
