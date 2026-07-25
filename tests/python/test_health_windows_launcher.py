@@ -176,14 +176,24 @@ def test_missing_git_bash_has_one_actionable_diagnostic(tmp_path: Path):
 
 
 def test_skill_routes_windows_commands_through_launcher():
-    text = SKILL.read_text(encoding="utf-8")
+    """Every documented Health action must reach Windows through the launcher.
 
-    assert "pwsh " not in text
-    assert "<skill-base-dir>/scripts/run-health.ps1" in text
-    assert "<skill-base-dir>/skills/health/scripts/run-health.ps1" in text
+    The surface is the skill entrypoint plus the reference files it loads, since
+    a conditional block moved into references/ still runs on the user's machine.
+    Scanning the union keeps the guarantee attached to the command, not to the
+    file that happens to carry it.
+    """
+    surface = [SKILL, *sorted((SKILL.parent / "references").glob("*.md"))]
+    texts = {path: path.read_text(encoding="utf-8") for path in surface}
+    joined = "\n".join(texts.values())
+
+    for path, text in texts.items():
+        assert "pwsh " not in text, f"{path.name} invokes pwsh directly"
+    assert "<skill-base-dir>/scripts/run-health.ps1" in texts[SKILL]
+    assert "<skill-base-dir>/skills/health/scripts/run-health.ps1" in texts[SKILL]
     for action in ACTION_SCRIPTS:
-        assert f'"$HEALTH_LAUNCHER" {action}' in text
-    assert 'bash "$HEALTH_SCRIPT"' in text
+        assert f'"$HEALTH_LAUNCHER" {action}' in joined, f"{action} has no launcher route"
+    assert 'bash "$HEALTH_SCRIPT"' in texts[SKILL]
 
 
 def test_health_shell_scripts_are_pinned_to_lf():
