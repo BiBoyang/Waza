@@ -27,6 +27,7 @@ for required in \
   skills/health/scripts/check-doc-refs.sh \
   skills/health/scripts/check-maintainability.sh \
   skills/health/scripts/check-verifier-output.sh \
+  skills/health/scripts/run-health.ps1 \
   skills/health/agents/inspector-maintainability.md; do
   grep -qx "$required" "$tmpdir/manifest"
 done
