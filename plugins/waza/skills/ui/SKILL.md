@@ -38,6 +38,7 @@ Pick the path that matches the ask, then read it in full. Building a new surface
 |---|---|
 | Bounded fix to an existing screen ("this looks cramped", "the spacing is off") | load `references/mode-quick-fix.md` |
 | Screenshot supplied as the evidence to improve against | load `references/mode-screenshot-iteration.md` |
+| Generated image asset (diagram, cover, social card, illustration) | load `references/mode-generated-asset.md` |
 | New page, component, or visual system | [Lock the Direction First](#lock-the-direction-first) |
 
 ## Lock the Direction First
@@ -108,6 +109,7 @@ Give at least 3 variations across genuinely different dimensions (density, typog
 | Chose glassmorphism, ignored the mobile constraint | `backdrop-filter` is expensive on low-power devices. Name the tradeoff. |
 | Light-mode app: white panel on white background, visually indistinguishable | Adjacent nested surfaces must differ visually. Either background step (sidebar vs main ≥4% lightness difference) or shadow minimum `0 1px 3px rgba(0,0,0,0.10)`. |
 | Fixed visual polish by redesigning the whole surface | Locate the concrete visual delta first, then make the smallest material, opacity, geometry, or typography change that addresses it. |
+| Regenerated an image a third time after two "ugly" verdicts | Two rejections on look means the subject is the disagreement, not the palette. Stop generating and re-align on what the image says. |
 | Added a setting or louder control to solve UI noise | Remove the misleading affordance or choose a quiet default first |
 | English looked fine, localized text overflowed | Test long words and localized strings before handoff, especially inside buttons, tabs, nav, and compact cards. |
 | Relied on `…` truncation to fit text in a fixed-width slot | Guarantee fit instead: compact the format, cap to whole segments, or hard-trim with no glyph. Metric and label footers must never tail-truncate into an ellipsis. |
