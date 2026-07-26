@@ -40,6 +40,8 @@ Run `make test` before meaningful changes to skill behavior, packaging, scripts,
 
 ## Skill Design Rules
 
+The doctrine behind every rule below: give the model the target, not the path. A skill that spells out the route buys compliance and loses the judgment that makes the model worth calling; state what "done" looks like and let it route.
+
 Before adding a capability, decide the layer deliberately:
 
 | Question | Yes | No |
