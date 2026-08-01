@@ -231,8 +231,40 @@ def test_broken_app_aliases_do_not_win_python_discovery(tmp_path: Path):
     assert result.returncode == 0, result.stderr
     assert "=== AGENT CONFIG DETAIL ===" in result.stdout
     assert "=== AI MAINTAINABILITY DETAIL ===" in result.stdout
-    assert "(unavailable: check-agent-context.sh failed)" not in result.stdout
-    assert "(unavailable: check-maintainability.sh failed)" not in result.stdout
+    assert "=== AGENT CONFIG DETAIL ===\n(unavailable" not in result.stdout
+    assert "=== AI MAINTAINABILITY DETAIL ===\n(unavailable" not in result.stdout
+
+
+@WINDOWS_ONLY
+@pytest.mark.parametrize(
+    ("action", "extra_args", "receipt"),
+    [
+        ("agent-context", ("summary",), "=== AGENT INSTRUCTION SURFACE ==="),
+        ("maintainability", ("summary",), "maintainability_status:"),
+        ("doc-refs", (), "doc references: ok"),
+    ],
+)
+def test_real_python_backed_actions_run_through_git_bash(
+    tmp_path: Path,
+    action: str,
+    extra_args: tuple[str, ...],
+    receipt: str,
+):
+    target = tmp_path / "target project"
+    target.mkdir()
+    env = clean_windows_env(tmp_path)
+
+    result = run_launcher(
+        LAUNCHER,
+        action,
+        str(target),
+        *extra_args,
+        cwd=target,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert receipt in result.stdout, result.stderr
 
 
 @WINDOWS_ONLY

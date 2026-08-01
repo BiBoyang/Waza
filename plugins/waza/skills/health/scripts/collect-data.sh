@@ -448,7 +448,9 @@ list_skill_files() {
     [ -n "$link" ] || continue
     path_has_controls "$link" && continue
     target=$(resolve_symlink "$link" || true)
-    [ -n "$target" ] && [ -d "$target" ] || continue
+    if [ -z "$target" ] || [ ! -d "$target" ]; then
+      continue
+    fi
     path_has_controls "$target" && continue
     path_is_sensitive "$target" && continue
     if is_project_skill_path "$link" && ! path_is_within "$target" "$HEALTH_TARGET"; then
@@ -932,13 +934,13 @@ if [ "$MODE" = "deep" ]; then
 else
   echo "=== AGENT CONFIG SUMMARY ==="
 fi
-AGENT_CONTEXT_SCRIPT="$(resolve_health_helper check-agent-context.sh || true)"
-if [ -n "$AGENT_CONTEXT_SCRIPT" ]; then
-  if ! BASH_ENV='' ENV='' /bin/bash -p "$AGENT_CONTEXT_SCRIPT" "$P" "$MODE"; then
-    echo "(unavailable: check-agent-context.sh failed)"
+AGENT_CONTEXT_SCRIPT="$(resolve_health_helper check_agent_context.py || true)"
+if [ -n "$AGENT_CONTEXT_SCRIPT" ] && [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -I "$AGENT_CONTEXT_SCRIPT" "$P" "$MODE"; then
+    echo "(unavailable: check_agent_context.py failed)"
   fi
 else
-  echo "(unavailable: check-agent-context.sh not found)"
+  echo "(unavailable: check_agent_context.py or trusted Python missing)"
 fi
 
 echo "[10/12] AI maintainability..."
@@ -947,13 +949,13 @@ if [ "$MODE" = "deep" ]; then
 else
   echo "=== AI MAINTAINABILITY SUMMARY ==="
 fi
-MAINTAINABILITY_SCRIPT="$(resolve_health_helper check-maintainability.sh || true)"
-if [ -n "$MAINTAINABILITY_SCRIPT" ]; then
-  if ! BASH_ENV='' ENV='' /bin/bash -p "$MAINTAINABILITY_SCRIPT" "$P" "$MODE"; then
-    echo "(unavailable: check-maintainability.sh failed)"
+MAINTAINABILITY_SCRIPT="$(resolve_health_helper check_maintainability.py || true)"
+if [ -n "$MAINTAINABILITY_SCRIPT" ] && [ -n "$PYTHON_BIN" ]; then
+  if ! "$PYTHON_BIN" -I "$MAINTAINABILITY_SCRIPT" "$P" "$MODE"; then
+    echo "(unavailable: check_maintainability.py failed)"
   fi
 else
-  echo "(unavailable: check-maintainability.sh not found)"
+  echo "(unavailable: check_maintainability.py or trusted Python missing)"
 fi
 
 echo "[11/12] Skill inventory + frontmatter + provenance..."
