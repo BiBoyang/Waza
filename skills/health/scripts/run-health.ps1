@@ -260,11 +260,17 @@ function Resolve-WorkingPython([string]$Candidate, [string]$TargetRoot) {
         return $null
     }
     try {
-        & $executable --version *> $null
-        if ($LASTEXITCODE -eq 0) {
-            & $executable -I -c "import sys; raise SystemExit(sys.version_info < (3, 9))" *> $null
-        }
-        if ($LASTEXITCODE -eq 0) {
+        $probe = @(
+            & $executable -I -c (
+                "import sys; print('waza-health-python-ok') " +
+                "if sys.version_info >= (3, 9) else sys.exit(1)"
+            ) 2>$null
+        )
+        if (
+            $LASTEXITCODE -eq 0 -and
+            $probe.Count -eq 1 -and
+            $probe[0] -eq "waza-health-python-ok"
+        ) {
             return $executable
         }
     } catch {

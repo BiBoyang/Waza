@@ -500,7 +500,7 @@ def test_launcher_does_not_trust_runtime_selection_environment():
         "ENV",
     ):
         assert f'Remove-Item "Env:{name}"' in text
-    assert "--version" in text
+    assert 'waza-health-python-ok' in text
     assert "function Resolve-FinalPath" in text
     assert "function Resolve-SafePath" in text
     assert "function ConvertTo-GitBashPath" in text
