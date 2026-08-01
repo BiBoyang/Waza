@@ -86,13 +86,17 @@ ROOT_HG="$hotspot_good" python3 -c "
 import os
 from pathlib import Path
 p = Path(os.environ['ROOT_HG']) / 'src/hotspot.ts'
-p.write_text('\n'.join(f'export const item{i} = {i};' for i in range(900)) + '\n')
+p.write_text('\n'.join(f'export const item{i} = {i};' for i in range(1300)) + '\n')
 "
 bash "$CHECKER" "$hotspot_good" deep >"$tmpdir/hotspot-good.out"
 grep -q '^hotspot_ownership_status: PASS$' "$tmpdir/hotspot-good.out"
 if grep -q 'large source files lack hotspot ownership or verification map' "$tmpdir/hotspot-good.out"; then
   echo "documented hotspot should not warn"; exit 1
 fi
+bash "$CHECKER" "$hotspot_good" summary >"$tmpdir/hotspot-good-summary.out"
+grep -q '^maintainability_status: PASS$' "$tmpdir/hotspot-good-summary.out"
+grep -q '^hotspot_ownership_status: PASS$' "$tmpdir/hotspot-good-summary.out"
+grep -q 'src/hotspot.ts lines=1300' "$tmpdir/hotspot-good-summary.out"
 
 # Case 5: undocumented hotspot -> WARN with specific file named.
 hotspot_bad="$tmpdir/hotspot-bad"
@@ -283,5 +287,107 @@ test ! -e "$fsmonitor_marker" || {
 if grep -qE 'PRIVATE_MAINTAINABILITY_TOKEN|private-maintainability.md' "$tmpdir/guarded.out"; then
   echo "maintainability audit followed a repository-controlled symlink"; exit 1
 fi
+
+# Case 14: a Markdown link may target a symlink whose final target remains
+# inside the repository. This is the normal AGENTS.md / CLAUDE.md setup.
+doc_symlink="$tmpdir/doc-symlink"
+mkdir -p "$doc_symlink"
+write_standard_agents_md "$doc_symlink/AGENTS.md"
+ln -s AGENTS.md "$doc_symlink/CLAUDE.md"
+printf 'test:\n\t@echo test\n' > "$doc_symlink/Makefile"
+printf '%s\n' 'See [Claude instructions](CLAUDE.md).' > "$doc_symlink/README.md"
+bash "$CHECKER" "$doc_symlink" deep >"$tmpdir/doc-symlink.out"
+grep -q '^markdown_link_status: PASS$' "$tmpdir/doc-symlink.out"
+
+# Case 15: generated plugin mirrors are one logical maintenance surface, and
+# fixture/documentation marker examples are not implementation debt.
+mirrors="$tmpdir/mirrors"
+mkdir -p "$mirrors/skills/demo" "$mirrors/plugins/waza/skills/demo" "$mirrors/tests"
+write_standard_agents_md "$mirrors/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$mirrors/Makefile"
+printf '%s\n' '# Demo' 'TODO is a documented placeholder example.' > "$mirrors/skills/demo/SKILL.md"
+cp "$mirrors/skills/demo/SKILL.md" "$mirrors/plugins/waza/skills/demo/SKILL.md"
+printf '%s\n' '# TODO fixture' > "$mirrors/tests/test_fixture.py"
+bash "$CHECKER" "$mirrors" deep >"$tmpdir/mirrors.out"
+grep -q '^generated_mirror_files_collapsed: 1$' "$tmpdir/mirrors.out"
+grep -q '^generated_mirror_files_drifted: 0$' "$tmpdir/mirrors.out"
+grep -q '^generated_mirror_comparison_gaps: 0$' "$tmpdir/mirrors.out"
+grep -q '^todo_markers: 0$' "$tmpdir/mirrors.out"
+grep -q '^fixture_or_instruction_marker_lines_ignored: 2$' "$tmpdir/mirrors.out"
+
+# Case 16: mirror comparison must read the complete file. Generated files that
+# share a large prefix but differ after the text-audit limit remain separate.
+large_mirrors="$tmpdir/large-mirrors"
+mkdir -p "$large_mirrors/skills/demo" "$large_mirrors/plugins/waza/skills/demo"
+write_standard_agents_md "$large_mirrors/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$large_mirrors/Makefile"
+ROOT_LM="$large_mirrors" python3 -c "
+import os
+from pathlib import Path
+root = Path(os.environ['ROOT_LM'])
+prefix = b'x' * 2_000_000
+(root / 'skills/demo/SKILL.md').write_bytes(prefix + b'source')
+(root / 'plugins/waza/skills/demo/SKILL.md').write_bytes(prefix + b'mirror')
+"
+bash "$CHECKER" "$large_mirrors" deep >"$tmpdir/large-mirrors.out"
+grep -q '^generated_mirror_files_collapsed: 0$' "$tmpdir/large-mirrors.out"
+grep -q '^generated_mirror_files_drifted: 1$' "$tmpdir/large-mirrors.out"
+grep -q '^drift_status: WARN$' "$tmpdir/large-mirrors.out"
+
+# Case 17: an oversized mirror comparison stays bounded and reports a gap.
+huge_mirrors="$tmpdir/huge-mirrors"
+mkdir -p "$huge_mirrors/skills/demo" "$huge_mirrors/plugins/waza/skills/demo"
+write_standard_agents_md "$huge_mirrors/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$huge_mirrors/Makefile"
+ROOT_HM="$huge_mirrors" python3 -c "
+import os
+from pathlib import Path
+root = Path(os.environ['ROOT_HM'])
+payload = b'x' * 16_000_001
+(root / 'skills/demo/SKILL.md').write_bytes(payload)
+(root / 'plugins/waza/skills/demo/SKILL.md').write_bytes(payload)
+"
+bash "$CHECKER" "$huge_mirrors" summary >"$tmpdir/huge-mirrors.out"
+grep -q '^generated_mirror_files_collapsed: 0$' "$tmpdir/huge-mirrors.out"
+grep -q '^generated_mirror_comparison_gaps: 1$' "$tmpdir/huge-mirrors.out"
+grep -q '^drift_status: WARN$' "$tmpdir/huge-mirrors.out"
+
+# Case 18: a documented hotspot must not cover an unmentioned sibling through
+# a shared parent directory.
+hotspot_sibling="$tmpdir/hotspot-sibling"
+mkdir -p "$hotspot_sibling/src/services"
+cat > "$hotspot_sibling/AGENTS.md" <<'EOF'
+## Project
+Repository Map: src contains runtime code.
+## Hotspot Ownership
+- `src/services/owned.py`: owns the indexed path. Verify with `make test`.
+## Verification
+Run `make test` before handoff.
+## Boundaries
+Do not rewrite unrelated modules.
+EOF
+printf 'test:\n\t@echo test\n' > "$hotspot_sibling/Makefile"
+ROOT_HS="$hotspot_sibling" python3 -c "
+import os
+from pathlib import Path
+root = Path(os.environ['ROOT_HS'])
+for name in ('owned.py', 'unowned.py'):
+    (root / 'src/services' / name).write_text('x = 1\\n' * 1300)
+"
+bash "$CHECKER" "$hotspot_sibling" summary >"$tmpdir/hotspot-sibling.out"
+grep -q '^hotspot_ownership_status: WARN$' "$tmpdir/hotspot-sibling.out"
+grep -q 'src/services/owned.py lines=1300' "$tmpdir/hotspot-sibling.out"
+grep -q 'src/services/unowned.py lines=1300 reason=not mentioned' "$tmpdir/hotspot-sibling.out"
+
+# Case 19: real Markdown debt is counted while explicit marker examples stay
+# informational.
+markdown_debt="$tmpdir/markdown-debt"
+mkdir -p "$markdown_debt/docs"
+write_standard_agents_md "$markdown_debt/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$markdown_debt/Makefile"
+printf '%s\n' 'TODO: rotate signing key before release.' > "$markdown_debt/docs/release.md"
+bash "$CHECKER" "$markdown_debt" deep >"$tmpdir/markdown-debt.out"
+grep -q '^todo_markers: 1$' "$tmpdir/markdown-debt.out"
+grep -q 'docs/release.md markers=1' "$tmpdir/markdown-debt.out"
 
 echo "maintainability smoke: ok"

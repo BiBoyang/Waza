@@ -12,6 +12,7 @@ explicitly enables all-project mode.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -34,6 +35,7 @@ MAX_CONTENT_ITEMS = 256
 MAX_TOOL_NAME_CHARS = 120
 LIVE_WINDOW_SECONDS = 300
 SUMMARY_CANDIDATE_LIMIT = 200
+MIN_CLONE_CONTEXT_MESSAGES = 4
 
 CONTEXT_RE = re.compile(
     r"conversation was compressed|context limit|context window|truncat|/compact|"
@@ -173,6 +175,8 @@ class Signal:
     mtime: float
     ordinal: int
     runtime: str
+    lineage: str
+    message_index: int
 
 
 @dataclass
@@ -339,7 +343,7 @@ def classify(message: Message, japanese_allowed: bool = False) -> Optional[str]:
     text = message.text.strip()
     if message.role == "platform":
         return "PLATFORM INTERRUPTION"
-    if PLATFORM_INTERRUPTION_RE.search(text):
+    if message.role == "system" and PLATFORM_INTERRUPTION_RE.search(text):
         return "PLATFORM INTERRUPTION"
     if CONTEXT_RE.search(text):
         return "CONTEXT SIGNAL"
@@ -360,6 +364,30 @@ def classify(message: Message, japanese_allowed: bool = False) -> Optional[str]:
     return None
 
 
+def independent_signals(signals: list[Signal]) -> tuple[list[Signal], int]:
+    """Collapse shared-history clones while preserving repeated real turns."""
+    ordered = sorted(
+        signals, key=lambda signal: (signal.mtime, signal.ordinal), reverse=True
+    )
+    accepted: list[Signal] = []
+    seen: dict[tuple[str, str, str], set[tuple[str, str]]] = {}
+    collapsed = 0
+    for signal in ordered:
+        normalized = re.sub(r"\s+", " ", signal.text).strip().casefold()
+        key = (signal.label, normalized, signal.lineage)
+        source = (signal.runtime, signal.file)
+        is_clone = (
+            signal.message_index >= MIN_CLONE_CONTEXT_MESSAGES
+            and any(other_source != source for other_source in seen.get(key, set()))
+        )
+        if is_clone:
+            collapsed += 1
+            continue
+        accepted.append(signal)
+        seen.setdefault(key, set()).add(source)
+    return accepted, collapsed
+
+
 def scan_file(
     item: ConversationFile,
     stats: ScanStats,
@@ -374,6 +402,7 @@ def scan_file(
     recent_platform_interruption = False
     japanese_allowed = False
     assistant_seen = False
+    lineage = hashlib.sha256()
     descriptor = -1
     try:
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
@@ -412,6 +441,10 @@ def scan_file(
                     continue
                 stats.messages += 1
                 message_count += 1
+                lineage.update(message.role.encode("utf-8", errors="replace"))
+                lineage.update(b"\0")
+                lineage.update(message.text.encode("utf-8", errors="replace"))
+                lineage.update(b"\0")
                 if collect_messages:
                     if len(message_head) < EXTRACT_HEAD:
                         message_head.append(message)
@@ -440,6 +473,8 @@ def scan_file(
                             item.mtime,
                             ordinal,
                             item.runtime,
+                            lineage.hexdigest(),
+                            message_count,
                         )
                     )
     except OSError:
@@ -814,11 +849,12 @@ def audit(
 
     print_file_manifest(files, live_paths, signal_paths, extract_paths)
 
-    ordered_signals = sorted(
-        all_signals, key=lambda signal: (signal.mtime, signal.ordinal), reverse=True
-    )
+    ordered_signals, duplicate_signals_collapsed = independent_signals(all_signals)
     emitted = ordered_signals[:MAX_SIGNALS]
     print("=== CONVERSATION SIGNALS ===")
+    print(f"raw_signals_found: {len(all_signals)}")
+    print(f"independent_signals: {len(ordered_signals)}")
+    print(f"duplicate_signals_collapsed: {duplicate_signals_collapsed}")
     print(f"signals_found: {len(ordered_signals)}")
     print(f"signals_emitted: {len(emitted)}")
     print(
@@ -834,8 +870,8 @@ def audit(
         )
 
     print("=== SIGNAL THEME SUMMARY ===")
-    theme_counts = signal_theme_counts(all_signals)
-    print(f"signals_classified: {len(all_signals)}")
+    theme_counts = signal_theme_counts(ordered_signals)
+    print(f"signals_classified: {len(ordered_signals)}")
     print("theme_counts:")
     if theme_counts:
         for theme, count in theme_counts.most_common():

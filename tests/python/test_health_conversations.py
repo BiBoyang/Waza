@@ -324,7 +324,7 @@ def test_user_correction_requires_an_earlier_assistant_reply_in_same_session(
     assert "不要过度设计" not in corrections[0]
 
 
-def test_platform_interruption_is_not_counted_as_agent_persistence(tmp_path: Path):
+def test_unstructured_assistant_error_text_is_not_a_platform_event(tmp_path: Path):
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     write_session(sessions / "live.jsonl", [record("user", "live")], int(time.time()))
@@ -336,9 +336,25 @@ def test_platform_interruption_is_not_counted_as_agent_persistence(tmp_path: Pat
 
     output = run_audit(sessions, "deep")
 
+    assert "PLATFORM INTERRUPTION:" not in output
+    assert "PLATFORM CONTINUATION:" not in output
+    assert "PERSISTENCE SIGNAL:" in output
+
+
+def test_system_error_text_remains_a_platform_event(tmp_path: Path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    write_session(sessions / "live.jsonl", [record("user", "live")], int(time.time()))
+    write_session(
+        sessions / "system-error.jsonl",
+        [record("system", "API Error: response failed"), record("user", "继续")],
+        100,
+    )
+
+    output = run_audit(sessions, mode="deep")
+
     assert "PLATFORM INTERRUPTION:" in output
     assert "PLATFORM CONTINUATION:" in output
-    assert "PERSISTENCE SIGNAL:" not in output
 
 
 def test_structured_codex_interruptions_are_not_agent_persistence(tmp_path: Path):
@@ -388,6 +404,47 @@ def test_structured_codex_interruptions_are_not_agent_persistence(tmp_path: Path
     assert output.count("PLATFORM INTERRUPTION:") == 2
     assert output.count("PLATFORM CONTINUATION:") == 2
     assert "PERSISTENCE SIGNAL:" not in output
+
+
+def test_nearby_cross_file_clones_count_as_one_independent_signal(tmp_path: Path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    write_session(sessions / "live.jsonl", [record("user", "live")], int(time.time()))
+    cloned_turn = [
+        record("user", "please inspect the current state"),
+        record("assistant", "I found the relevant path"),
+        record("user", "please keep the change narrow"),
+        record("assistant", "understood"),
+        record("user", "还是不对，请不要增加配置"),
+    ]
+    write_session(sessions / "clone-a.jsonl", cloned_turn, 200)
+    write_session(sessions / "clone-b.jsonl", cloned_turn, 100)
+
+    output = run_audit(sessions, "deep")
+
+    assert "raw_signals_found: 2" in output
+    assert "independent_signals: 1" in output
+    assert "duplicate_signals_collapsed: 1" in output
+    assert output.count("USER CORRECTION:") == 1
+
+
+def test_same_short_correction_in_independent_files_is_preserved(tmp_path: Path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    write_session(sessions / "live.jsonl", [record("user", "live")], int(time.time()))
+    repeated_turn = [
+        record("assistant", "understood"),
+        record("user", "还是不对，请不要增加配置"),
+    ]
+    write_session(sessions / "task-a.jsonl", repeated_turn, 200)
+    write_session(sessions / "task-b.jsonl", repeated_turn, 100)
+
+    output = run_audit(sessions, "deep")
+
+    assert "raw_signals_found: 2" in output
+    assert "independent_signals: 2" in output
+    assert "duplicate_signals_collapsed: 0" in output
+    assert output.count("USER CORRECTION:") == 2
 
 
 def test_unrequested_japanese_assistant_text_is_a_language_signal(tmp_path: Path):
