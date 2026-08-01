@@ -29,7 +29,10 @@ OPERATIONAL_RULE_RE = re.compile(
     r"(Git Safety|Public Issue Replies|Investigation Honesty|Verification|Response Style|Commit|Security)",
     re.IGNORECASE,
 )
+CJK_CONTEXT_RE = re.compile(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]")
 MAX_FILE_BYTES = 2_000_000
+MAX_CONTEXT_PROJECT_FILES = 50_000
+MAX_CONTEXT_MATCH_EVALUATIONS = 2_000_000
 _AUDIT_ROOT: Optional[Path] = None
 _AUDIT_HOME: Optional[Path] = None
 _TRUSTED_SCRIPT_ROOT = Path(__file__).resolve().parent
@@ -321,38 +324,214 @@ def rule_paths(text: str) -> list[str]:
     return paths
 
 
-def summarize_rule_context(project_rules: Path) -> list[str]:
+def selector_pattern(selector: str) -> re.Pattern[str]:
+    """Compile Claude's slash-aware * / ** path glob subset."""
+    pattern = ["^"]
+    index = 0
+    while index < len(selector):
+        char = selector[index]
+        if char == "*":
+            if index + 1 < len(selector) and selector[index + 1] == "*":
+                if index + 2 < len(selector) and selector[index + 2] == "/":
+                    pattern.append("(?:.*/)?")
+                    index += 3
+                else:
+                    pattern.append(".*")
+                    index += 2
+            else:
+                pattern.append("[^/]*")
+                index += 1
+        elif char == "?":
+            pattern.append("[^/]")
+            index += 1
+        else:
+            pattern.append(re.escape(char))
+            index += 1
+    pattern.append("$")
+    return re.compile("".join(pattern))
+
+
+def context_units(text: str) -> int:
+    """Conservative language-neutral context estimate for rule budgeting."""
+    cjk_characters = len(CJK_CONTEXT_RE.findall(text))
+    non_cjk_words = len(CJK_CONTEXT_RE.sub(" ", text).split())
+    return non_cjk_words + cjk_characters
+
+
+def project_relative_files(root: Path) -> tuple[list[str], bool]:
+    excluded = {
+        ".git", ".hg", ".svn", "node_modules", "dist", "build", ".next",
+        "__pycache__", ".venv", "venv", "target", "coverage", ".cache",
+        ".pytest_cache", ".mypy_cache", ".ruff_cache", "Pods", "Carthage",
+        ".swiftpm", ".gradle",
+    }
+    paths: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        current = Path(dirpath)
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if name not in excluded and not (current / name).is_symlink()
+        )
+        for filename in sorted(filenames):
+            path = current / filename
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                relative = path.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if any(ord(char) < 32 or ord(char) == 127 for char in relative):
+                continue
+            paths.append(relative)
+            if len(paths) >= MAX_CONTEXT_PROJECT_FILES:
+                return paths, True
+    return paths, False
+
+
+def summarize_rule_context(
+    rule_roots: list[tuple[str, Path]], root: Path
+) -> tuple[str, list[str]]:
     path_counts: Counter[str] = Counter()
     path_words: Counter[str] = Counter()
+    path_units: Counter[str] = Counter()
+    rule_entries: list[tuple[str, int, int, list[re.Pattern[str]]]] = []
     scoped_files = 0
     scoped_words = 0
+    scoped_units = 0
     always_files = 0
     always_words = 0
-    if resolve_audit_dir(project_rules) is not None:
-        for path in unique_physical_files(sorted(project_rules.glob("*.md"))):
-            text = read(path)
-            words = len(text.split())
-            paths = rule_paths(text)
-            if paths:
-                scoped_files += 1
-                scoped_words += words
-                for selector in paths:
-                    path_counts[selector] += 1
-                    path_words[selector] += words
-            else:
-                always_files += 1
-                always_words += words
+    always_units = 0
+    rule_files: list[tuple[str, Path]] = []
+    seen_rules: set[Path] = set()
+    for scope, rule_root in rule_roots:
+        if resolve_audit_dir(rule_root) is None:
+            continue
+        for path in sorted(rule_root.glob("*.md")):
+            canonical = resolve_audit_file(path)
+            if canonical is None or canonical in seen_rules:
+                continue
+            seen_rules.add(canonical)
+            rule_files.append((scope, path))
+    selector_count = 0
+    for scope, path in rule_files:
+        text = read(path)
+        words = len(text.split())
+        units = context_units(text)
+        paths = rule_paths(text)
+        if paths:
+            scoped_files += 1
+            scoped_words += words
+            scoped_units += units
+            selector_count += len(paths)
+            rule_entries.append(
+                (
+                    f"{scope}:{path.name}",
+                    words,
+                    units,
+                    [selector_pattern(selector) for selector in paths],
+                )
+            )
+            for selector in paths:
+                path_counts[selector] += 1
+                path_words[selector] += words
+                path_units[selector] += units
+        else:
+            always_files += 1
+            always_words += words
+            always_units += units
     ranked = sorted(
         path_counts,
-        key=lambda selector: (path_words[selector], path_counts[selector], selector),
+        key=lambda selector: (path_units[selector], path_counts[selector], selector),
         reverse=True,
     )
+    effective_loads: list[tuple[int, int, str, list[str]]] = []
+    project_files, project_files_truncated = project_relative_files(root)
+    match_evaluations = 0
+    match_budget_exhausted = False
+    for relative in project_files:
+        matching: list[tuple[str, int, int]] = []
+        for name, words, units, patterns in rule_entries:
+            matched = False
+            for pattern in patterns:
+                if match_evaluations >= MAX_CONTEXT_MATCH_EVALUATIONS:
+                    match_budget_exhausted = True
+                    break
+                match_evaluations += 1
+                if pattern.fullmatch(relative):
+                    matched = True
+                    break
+            if match_budget_exhausted:
+                break
+            if matched:
+                matching.append((name, words, units))
+        if match_budget_exhausted:
+            break
+        if matching:
+            effective_loads.append(
+                (
+                    sum(units for _, _, units in matching),
+                    sum(words for _, words, _ in matching),
+                    relative,
+                    [name for name, _, _ in matching],
+                )
+            )
+    effective_loads.sort(key=lambda item: (item[0], item[2]), reverse=True)
+    findings: list[str] = []
+    oversized_files: list[str] = []
+    for scope, path in rule_files:
+        text = read(path)
+        words = len(text.split())
+        units = context_units(text)
+        if units > 5_000:
+            oversized_files.append(
+                f"{scope}:{path.name} words={words} context_units={units}"
+            )
+    if always_units > 5_000:
+        findings.append(
+            "always-loaded rules exceed 5000 context units: "
+            f"words={always_words} context_units={always_units}"
+        )
+    if ranked and path_units[ranked[0]] > 10_000:
+        findings.append(
+            "one path selector loads more than 10000 context units: "
+            f"{ranked[0]} words={path_words[ranked[0]]} "
+            f"context_units={path_units[ranked[0]]}"
+        )
+    if effective_loads and effective_loads[0][0] > 10_000:
+        units, words, relative, matching_rules = effective_loads[0]
+        findings.append(
+            "one project path loads more than 10000 effective context units: "
+            f"{relative} words={words} context_units={units} "
+            f"rules={','.join(matching_rules)}"
+        )
+    if oversized_files:
+        findings.append("oversized path rules: " + ", ".join(oversized_files[:5]))
+    if project_files_truncated:
+        findings.append(
+            f"project path inventory exceeded {MAX_CONTEXT_PROJECT_FILES} files"
+        )
+    if match_budget_exhausted:
+        findings.append(
+            "path rule matching exceeded "
+            f"{MAX_CONTEXT_MATCH_EVALUATIONS} evaluations"
+        )
+    status = "WARN" if findings else "PASS"
     lines = [
         "=== PATH-SCOPED CONTEXT ===",
+        f"path_context_status: {status}",
+        f"path_context_rule_roots_scanned: {len(rule_roots)}",
+        f"path_context_selectors: {selector_count}",
+        f"path_context_project_files: {len(project_files)}",
+        f"path_context_project_files_truncated: {'yes' if project_files_truncated else 'no'}",
+        f"path_context_match_evaluations: {match_evaluations}",
+        f"path_context_match_budget_exhausted: {'yes' if match_budget_exhausted else 'no'}",
         f"path_scoped_rule_files: {scoped_files}",
         f"path_scoped_rule_words: {scoped_words}",
+        f"path_scoped_rule_context_units: {scoped_units}",
         f"always_loaded_rule_files: {always_files}",
         f"always_loaded_rule_words: {always_words}",
+        f"always_loaded_rule_context_units: {always_units}",
         "largest_path_triggers:",
     ]
     if not ranked:
@@ -361,9 +540,22 @@ def summarize_rule_context(project_rules: Path) -> list[str]:
         for selector in ranked[:10]:
             lines.append(
                 f"  selector={safe_label(selector)} files={path_counts[selector]} "
-                f"combined_words={path_words[selector]}"
+                f"combined_words={path_words[selector]} "
+                f"combined_context_units={path_units[selector]}"
             )
-    return lines
+    lines.append("largest_effective_paths:")
+    if not effective_loads:
+        lines.append("  (none)")
+    else:
+        for units, words, relative, matching_rules in effective_loads[:10]:
+            lines.append(
+                f"  path={safe_label(relative)} words={words} "
+                f"context_units={units} "
+                f"rules={safe_label(','.join(matching_rules))}"
+            )
+    lines.append("path_context_findings:")
+    lines.extend(f"  {item}" for item in (findings or ["(none)"]))
+    return status, lines
 
 
 def skill_name(path: Path) -> str:
@@ -423,8 +615,25 @@ def candidate_skill_files(root: Path, home: Path) -> list[Path]:
     return sorted(unique)
 
 
+def skill_runtime(path: Path, root: Path, home: Path) -> str:
+    for base, runtime in (
+        (root / ".claude" / "skills", "claude"),
+        (home / ".claude" / "skills", "claude"),
+        (root / ".agents" / "skills", "agents"),
+        (home / ".agents" / "skills", "agents"),
+        (root / ".codex" / "skills", "codex"),
+        (home / ".codex" / "skills", "codex"),
+    ):
+        try:
+            path.relative_to(base)
+            return runtime
+        except ValueError:
+            continue
+    return "other"
+
+
 def summarize_skill_duplicates(root: Path, home: Path) -> tuple[str, list[str]]:
-    by_name: dict[str, list[tuple[Path, str]]] = defaultdict(list)
+    by_name: dict[str, list[tuple[Path, str, str]]] = defaultdict(list)
     for path in candidate_skill_files(root, home):
         name = skill_name(path)
         if not name:
@@ -436,24 +645,56 @@ def summarize_skill_duplicates(root: Path, home: Path) -> tuple[str, list[str]]:
             digest = hashlib.sha256(raw).hexdigest()
         except OSError:
             continue
-        by_name[name].append((path, digest))
+        by_name[name].append((path, digest, skill_runtime(path, root, home)))
     duplicate_lines: list[str] = []
+    cross_runtime_lines: list[str] = []
+    cross_runtime_conflicts: list[str] = []
     for name, entries in sorted(by_name.items()):
         if len(entries) < 2:
             continue
-        digest_counts = Counter(digest for _, digest in entries)
-        exact_duplicate = any(count > 1 for count in digest_counts.values())
-        kind = "exact-copy" if exact_duplicate else "name-collision"
-        surfaces = ", ".join(display_path(path, root, home) for path, _ in entries[:6])
-        duplicate_lines.append(f"{name}: kind={kind} surfaces={surfaces}")
+        by_runtime: dict[str, list[tuple[Path, str]]] = defaultdict(list)
+        for path, digest, runtime in entries:
+            by_runtime[runtime].append((path, digest))
+        same_runtime = {
+            runtime: runtime_entries
+            for runtime, runtime_entries in by_runtime.items()
+            if len(runtime_entries) > 1
+        }
+        if same_runtime:
+            flattened = [item for group in same_runtime.values() for item in group]
+            digest_counts = Counter(digest for _, digest in flattened)
+            exact_duplicate = any(count > 1 for count in digest_counts.values())
+            kind = "exact-copy" if exact_duplicate else "name-collision"
+            surfaces = ", ".join(
+                display_path(path, root, home) for path, _ in flattened[:6]
+            )
+            duplicate_lines.append(f"{name}: kind={kind} surfaces={surfaces}")
+        elif len(by_runtime) > 1:
+            runtimes = ",".join(sorted(by_runtime))
+            digests = {digest for _path, digest, _runtime in entries}
+            content = "identical" if len(digests) == 1 else "divergent"
+            line = f"{name}: runtimes={runtimes} content={content}"
+            cross_runtime_lines.append(line)
+            if content == "divergent":
+                cross_runtime_conflicts.append(line)
+    source_skill_files = (
+        unique_physical_files(list((root / "skills").glob("*/SKILL.md")))
+        if resolve_audit_dir(root / "skills") is not None
+        else []
+    )
     lines = [
         "=== SKILL ROUTING DUPLICATES ===",
         f"skill_files_scanned: {sum(len(entries) for entries in by_name.values())}",
+        f"source_skill_files_scanned: {len(source_skill_files)}",
         f"duplicate_skill_names: {len(duplicate_lines)}",
         "duplicate_skills:",
     ]
     lines.extend(f"  {line}" for line in (duplicate_lines or ["(none)"]))
-    return ("WARN" if duplicate_lines else "PASS"), lines
+    lines.append(f"cross_runtime_shared_skill_names: {len(cross_runtime_lines)}")
+    lines.append("cross_runtime_skills:")
+    lines.extend(f"  {line}" for line in (cross_runtime_lines or ["(none)"]))
+    lines.append(f"cross_runtime_conflicts: {len(cross_runtime_conflicts)}")
+    return ("WARN" if duplicate_lines or cross_runtime_conflicts else "PASS"), lines
 
 
 def parse_codex_config(
@@ -724,10 +965,26 @@ def deny_category_status(
     }
 
 
+def has_task_scoped_env_policy(paths: list[Path]) -> bool:
+    for path in paths:
+        text = read(path, 200_000).lower()
+        if ".env" not in text:
+            continue
+        if re.search(
+            r"task.scoped|current task|task needs|read when needed|"
+            r"当前任务|确需|外传|写出|不进产出|"
+            r"do not (?:print|output|commit|exfiltrate)",
+            text,
+        ):
+            return True
+    return False
+
+
 def summarize_claude_permissions(
     global_path: Path,
     shared_path: Path,
     local_path: Path,
+    env_instruction_policy: bool,
 ) -> tuple[str, list[str], list[str]]:
     sources = [
         ("global", global_path),
@@ -765,12 +1022,18 @@ def summarize_claude_permissions(
         for label, path in sources
     )
     categories = deny_category_status(combined_deny, hook_present, home)
-    missing = [name for name, present in categories.items() if not present]
+    required_categories = {
+        name: present for name, present in categories.items() if name != "env_files"
+    }
+    missing = [name for name, present in required_categories.items() if not present]
+    env_policy_complete = categories["env_files"] or env_instruction_policy
+    if not env_policy_complete:
+        missing.append("env_policy")
     broad_read_allow = any(
         "**" in target
         for target in normalized_rule_targets(combined_allow, "Read")
     )
-    credential_floor = all(categories.values())
+    credential_floor = all(required_categories.values()) and env_policy_complete
     settings_surface_present = any(yes(path) == "yes" for _label, path in sources)
     findings: list[str] = list(errors)
     if settings_surface_present and not credential_floor:
@@ -792,6 +1055,7 @@ def summarize_claude_permissions(
     lines.extend([
         f"broad_read_allow_present: {'yes' if broad_read_allow else 'no'}",
         f"pretool_pipe_to_shell_hook: {'yes' if hook_present else 'no'}",
+        f"env_instruction_policy: {'yes' if env_instruction_policy else 'no'}",
         "configured_sensitive_deny_floor_complete: "
         + (
             "not_applicable"
@@ -978,7 +1242,12 @@ def main() -> int:
     shared_project_settings = root / ".claude" / "settings.json"
     local_project_settings = root / ".claude" / "settings.local.json"
     project_rules = root / ".claude" / "rules"
-    project_skills = root / ".claude" / "skills"
+    global_rules = home / ".claude" / "rules"
+    project_skill_roots = [
+        root / ".claude" / "skills",
+        root / ".agents" / "skills",
+        root / ".codex" / "skills",
+    ]
     global_skills = home / ".claude" / "skills"
     claude_findings: list[str] = []
     if yes(claude) == "yes" and claude_delegates:
@@ -1011,12 +1280,18 @@ def main() -> int:
         global_claude_settings,
         shared_project_settings,
         local_project_settings,
+        has_task_scoped_env_policy([global_claude, global_codex_agents, agents, claude]),
     )
     duplicate_status, duplicate_lines = summarize_skill_duplicates(root, home)
+    path_context_status, path_context_lines = summarize_rule_context(
+        [("project", project_rules), ("global", global_rules)], root
+    )
 
     conflict_findings: list[str] = []
     if yes(agents) == "yes" and yes(claude) == "yes" and not claude_delegates:
         conflict_findings.append("AGENTS.md and CLAUDE.md both exist; verify they do not diverge")
+    if duplicate_status == "WARN":
+        conflict_findings.append("active skill names collide or diverge across routing surfaces")
 
     instruction_status = "FAIL" if not instruction_files else ("WARN" if instruction_findings else "PASS")
     codex_status = "WARN" if codex_findings else "PASS"
@@ -1025,6 +1300,7 @@ def main() -> int:
         if (
             (claude_findings and "surface not found" in " ".join(claude_findings))
             or permission_status == "WARN"
+            or path_context_status == "WARN"
         )
         else "PASS"
     )
@@ -1062,21 +1338,30 @@ def main() -> int:
     print(f"shared_settings_json: {yes(shared_project_settings)}")
     print(f"settings_local_json: {yes(local_project_settings)}")
     rule_count = len(unique_physical_files(list(project_rules.glob("*.md"))))
-    local_skill_count = len(
-        unique_physical_files(list(project_skills.glob("*/SKILL.md")))
-    )
+    local_skill_count = len(unique_physical_files([
+        path
+        for skill_root in project_skill_roots
+        if resolve_audit_dir(skill_root) is not None
+        for path in skill_root.glob("*/SKILL.md")
+    ]))
     global_skill_count = len(
         unique_physical_files(list(global_skills.glob("*/SKILL.md")))
     )
     print(f"project_rules: {rule_count}")
     print(f"project_skills: {local_skill_count}")
+    source_skill_count = (
+        len(unique_physical_files(list((root / "skills").glob("*/SKILL.md"))))
+        if resolve_audit_dir(root / "skills") is not None
+        else 0
+    )
+    print(f"source_skills: {source_skill_count}")
     print(f"global_skills: {global_skill_count}")
     print_list("claude_findings", claude_findings)
 
     for line in permission_lines:
         print(safe_label(line, 2_000))
 
-    for line in summarize_rule_context(project_rules):
+    for line in path_context_lines:
         print(safe_label(line, 2_000))
 
     for line in duplicate_lines:

@@ -233,11 +233,10 @@ count_ci_workflows() {
 
 count_local_skills() {
   local count=0
-  count=$(for dir in "$P/.claude/skills" "$P/.agents/skills" "$P/.codex/skills"; do
+  count=$(for dir in "$P/skills" "$P/.claude/skills" "$P/.agents/skills" "$P/.codex/skills"; do
     [ -d "$dir" ] || continue
     list_skill_files "$dir"
   done | while IFS= read -r f; do
-      is_current_health_skill "$f" && continue
       canonical_skill_file "$f" || true
     done | sort -u | wc -l | tr -d ' ')
   printf '%s\n' "${count:-0}"
@@ -288,17 +287,55 @@ count_file_words() {
   fi
 }
 
+count_file_bytes() {
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -n "$canonical" ]; then
+    wc -c < "$canonical" | tr -d ' '
+  else
+    echo 0
+  fi
+}
+
+count_file_cjk_chars() {
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -z "$canonical" ] || [ -z "$PYTHON_BIN" ]; then
+    echo 0
+    return
+  fi
+  "$PYTHON_BIN" -I -c 'import re,sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding="utf-8",errors="replace"); print(len(re.findall(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]", text)))' "$canonical" 2>/dev/null || echo 0
+}
+
+count_file_context_units() {
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -z "$canonical" ] || [ -z "$PYTHON_BIN" ]; then
+    count_file_words "$file"
+    return
+  fi
+  "$PYTHON_BIN" -I -c 'import re,sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(encoding="utf-8",errors="replace"); cjk=re.compile(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]"); print(len(cjk.sub(" ", text).split()) + len(cjk.findall(text)))' "$canonical" 2>/dev/null || count_file_words "$file"
+}
+
+context_units_from_stream() {
+  if [ -z "$PYTHON_BIN" ]; then
+    wc -w | tr -d ' '
+    return
+  fi
+  "$PYTHON_BIN" -I -c 'import re,sys; text=sys.stdin.read(); cjk=re.compile(r"[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]"); print(len(cjk.sub(" ", text).split()) + len(cjk.findall(text)))'
+}
+
 list_rule_files() {
-  local file canonical
-  if [ -d "$P/.claude/rules" ]; then
+  local rule_dir file canonical
+  for rule_dir in "$P/.claude/rules" "$HOME/.claude/rules"; do
+    [ -d "$rule_dir" ] || continue
     while IFS= read -r -d '' file; do
       path_has_controls "$file" && continue
       canonical=$(canonical_health_file "$file" || true)
       [ -n "$canonical" ] || continue
       printf '%s\n' "$canonical"
-    done < <(find "$P/.claude/rules" -type f -name "*.md" -print0 2>/dev/null || true) \
-      | LC_ALL=C sort
-  fi
+    done < <(find "$rule_dir" -type f -name "*.md" -print0 2>/dev/null || true)
+  done | LC_ALL=C sort -u
 }
 
 print_rule_files() {
@@ -374,28 +411,84 @@ EOF
   [ "$count" -le 50 ] || echo "rule_file_summaries_truncated: $((count - 50))"
 }
 
+rule_has_paths_frontmatter() {
+  local file="$1"
+  awk '
+    NR == 1 && $0 == "---" { frontmatter = 1; next }
+    frontmatter && $0 == "---" { exit(found ? 0 : 1) }
+    frontmatter && $0 ~ /^paths:[[:space:]]*$/ { found = 1 }
+    END { if (!frontmatter) exit 1 }
+  ' "$file"
+}
+
 rules_word_count() {
-  local words=0
-  if [ -d "$P/.claude/rules" ]; then
+  local scope="${1:-all}" words=0
+  if [ -d "$P/.claude/rules" ] || [ -d "$HOME/.claude/rules" ]; then
     words=$(while IFS= read -r f; do
       [ -n "$f" ] || continue
+      if [ "$scope" = "scoped" ] && ! rule_has_paths_frontmatter "$f"; then
+        continue
+      fi
+      if [ "$scope" = "always" ] && rule_has_paths_frontmatter "$f"; then
+        continue
+      fi
       cat "$f"
     done < <(list_rule_files) | wc -w | tr -d ' ')
   fi
   printf '%s\n' "${words:-0}"
 }
 
-collect_skill_descriptions_raw() {
-  local f description
+rules_context_unit_count() {
+  local scope="${1:-all}"
+  if [ ! -d "$P/.claude/rules" ] && [ ! -d "$HOME/.claude/rules" ]; then
+    echo 0
+    return
+  fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    description=$(grep -m 1 '^description:' "$f" 2>/dev/null || true)
-    [ -n "$description" ] && printf '%s:%s\n' "$(health_path_label "$f")" "$description"
-  done < <(list_all_skill_files)
+    if [ "$scope" = "scoped" ] && ! rule_has_paths_frontmatter "$f"; then
+      continue
+    fi
+    if [ "$scope" = "always" ] && rule_has_paths_frontmatter "$f"; then
+      continue
+    fi
+    cat "$f"
+  done < <(list_rule_files) | context_units_from_stream
+}
+
+collect_skill_descriptions_raw() {
+  local f description helper
+  helper=$(resolve_health_helper read_skill_description.py || true)
+  [ -n "$helper" ] && [ -n "$PYTHON_BIN" ] || return 0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    description=$("$PYTHON_BIN" -I "$helper" "$f" 2>/dev/null || true)
+    [ -n "$description" ] && printf '%s:description: %s\n' "$(health_path_label "$f")" "$description"
+  done < <(list_direct_skill_files)
+}
+
+skill_description_inventory_status() {
+  local helper
+  if [ -z "$PYTHON_BIN" ]; then
+    echo "unavailable_python"
+    return
+  fi
+  helper=$(resolve_health_helper read_skill_description.py || true)
+  if [ -z "$helper" ]; then
+    echo "unavailable_helper"
+  else
+    echo "available"
+  fi
 }
 
 print_skill_descriptions() {
-  local out count
+  local out count status
+  status=$(skill_description_inventory_status)
+  echo "skill_description_inventory_status: $status"
+  if [ "$status" != "available" ]; then
+    echo "(unavailable: skill description parser)"
+    return
+  fi
   out=$(collect_skill_descriptions_raw | sort -u | awk 'NR <= 101')
   if [ -n "$out" ]; then
     count=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
@@ -407,7 +500,13 @@ print_skill_descriptions() {
 }
 
 print_skill_description_summary() {
-  local out count
+  local out count status
+  status=$(skill_description_inventory_status)
+  echo "skill_description_inventory_status: $status"
+  if [ "$status" != "available" ]; then
+    echo "skill_descriptions: unavailable"
+    return
+  fi
   out=$(collect_skill_descriptions_raw | sort -u)
   if [ -z "$out" ]; then
     echo "skill_descriptions: 0"
@@ -416,11 +515,13 @@ print_skill_description_summary() {
 
   count=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
   echo "skill_descriptions: $count"
-  printf '%s\n' "$out" | head -20 | awk -F: '{
-    path=$1
-    line=$0
-    sub(/^[^:]*:/, "", line)
-    printf "path=%s description_chars=%d\n", path, length(line)
+  printf '%s\n' "$out" | awk 'NR <= 20 {
+    marker=":description: "
+    position=index($0, marker)
+    if (!position) next
+    path=substr($0, 1, position - 1)
+    description=substr($0, position + length(marker))
+    printf "path=%s description_chars=%d\n", path, length(description)
   }'
   if [ "$count" -gt 20 ]; then
     echo "skill_descriptions_truncated: yes"
@@ -431,6 +532,10 @@ skill_description_word_count() {
   local words
   words=$(collect_skill_descriptions_raw | wc -w | tr -d ' ')
   printf '%s\n' "${words:-0}"
+}
+
+skill_description_context_unit_count() {
+  collect_skill_descriptions_raw | context_units_from_stream
 }
 
 list_skill_files() {
@@ -478,6 +583,20 @@ direct_skill_roots() {
     "$HOME/.codex/skills"
 }
 
+source_skill_roots() {
+  printf '%s\n' "$P/skills"
+}
+
+list_direct_skill_files() {
+  local dir
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    list_skill_files "$dir"
+  done < <(direct_skill_roots) | while IFS= read -r file; do
+    canonical_skill_file "$file" || true
+  done | sort -u
+}
+
 codex_plugin_candidate_skill_roots() {
   local cache="$HOME/.codex/plugins/cache" dir
   [ -d "$cache" ] || return 0
@@ -491,6 +610,7 @@ codex_plugin_candidate_skill_roots() {
 skill_roots() {
   local plugin_roots
   plugin_roots=$(codex_plugin_candidate_skill_roots)
+  source_skill_roots
   direct_skill_roots
   [ -n "$plugin_roots" ] && printf '%s\n' "$plugin_roots"
 }
@@ -503,7 +623,7 @@ path_is_within() {
 is_project_skill_path() {
   local path="$1"
   case "$path/" in
-    "$P/.claude/skills/"*|"$P/.agents/skills/"*|"$P/.codex/skills/"*) return 0 ;;
+    "$P/skills/"*|"$P/.claude/skills/"*|"$P/.agents/skills/"*|"$P/.codex/skills/"*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -511,7 +631,7 @@ is_project_skill_path() {
 is_declared_skill_path() {
   local path="$1"
   case "$path/" in
-    "$P/.claude/skills/"*|"$P/.agents/skills/"*|"$P/.codex/skills/"*|\
+    "$P/skills/"*|"$P/.claude/skills/"*|"$P/.agents/skills/"*|"$P/.codex/skills/"*|\
     "$HOME/.claude/skills/"*|"$HOME/.agents/skills/"*|"$HOME/.codex/skills/"*|\
     "$HOME/.codex/plugins/cache/"*) return 0 ;;
     *) return 1 ;;
@@ -585,7 +705,7 @@ list_security_skill_files() {
 
 print_skill_root_coverage() {
   local dir link target
-  local direct_present=0 plugin_candidates=0 rejected_roots=0
+  local direct_present=0 source_present=0 plugin_candidates=0 rejected_roots=0
   while IFS= read -r dir; do
     [ -d "$dir" ] && direct_present=$((direct_present + 1))
     [ -d "$dir" ] || continue
@@ -598,9 +718,14 @@ print_skill_root_coverage() {
       fi
     done < <(find "$dir" -mindepth 1 -maxdepth 1 -type l -print0 2>/dev/null || true)
   done < <(direct_skill_roots)
+  while IFS= read -r dir; do
+    [ -d "$dir" ] && source_present=$((source_present + 1))
+  done < <(source_skill_roots)
   plugin_candidates=$(codex_plugin_candidate_skill_roots | wc -l | tr -d ' ')
   echo "direct_skill_roots_declared: 6"
   echo "direct_skill_roots_present: $direct_present"
+  echo "source_skill_roots_declared: 1"
+  echo "source_skill_roots_present: $source_present"
   echo "codex_plugin_candidate_roots_scanned: ${plugin_candidates:-0}"
   echo "codex_plugin_activation_status: unknown"
   echo "codex_plugin_activation_gap: cache_presence_only_cannot_prove_active_routing"
@@ -752,9 +877,20 @@ fi
 echo "[5/12] Context budget estimate..."
 echo "=== STARTUP CONTEXT ESTIMATE ==="
 echo "global_claude_words: $(count_file_words "$HOME/.claude/CLAUDE.md")"
+echo "global_claude_cjk_chars: $(count_file_cjk_chars "$HOME/.claude/CLAUDE.md")"
+echo "global_claude_bytes: $(count_file_bytes "$HOME/.claude/CLAUDE.md")"
+echo "global_claude_context_units: $(count_file_context_units "$HOME/.claude/CLAUDE.md")"
 echo "local_claude_words: $(count_file_words "$P/CLAUDE.md")"
-echo "rules_words: $(rules_word_count)"
+echo "local_claude_cjk_chars: $(count_file_cjk_chars "$P/CLAUDE.md")"
+echo "local_claude_bytes: $(count_file_bytes "$P/CLAUDE.md")"
+echo "local_claude_context_units: $(count_file_context_units "$P/CLAUDE.md")"
+echo "rules_words: $(rules_word_count always)"
+echo "rules_context_units: $(rules_context_unit_count always)"
+echo "path_scoped_rules_words: $(rules_word_count scoped)"
+echo "path_scoped_rules_context_units: $(rules_context_unit_count scoped)"
 echo "skill_desc_words: $(skill_description_word_count)"
+echo "skill_desc_context_units: $(skill_description_context_unit_count)"
+echo "skill_description_inventory_status: $(skill_description_inventory_status)"
 if [ -n "$PYTHON_BIN" ]; then
 SAFE_SETTINGS=$(canonical_health_file "$SETTINGS" || true)
 "$PYTHON_BIN" -I - "$SAFE_SETTINGS" "$MODE" <<'PYEOF' 2>/dev/null || echo "(unavailable)"
@@ -966,7 +1102,6 @@ _SKILL_FOUND=0
 _SKILL_SHOWN=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  is_current_health_skill "$f" && continue
   _SKILL_FOUND=1
   _SKILL_SHOWN=$((_SKILL_SHOWN + 1))
   [ "$_SKILL_SHOWN" -le 200 ] || continue
@@ -982,7 +1117,6 @@ if [ "$MODE" = "deep" ]; then
   _FRONTMATTER_SHOWN=0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    is_current_health_skill "$f" && continue
     _FRONTMATTER_FOUND=1
     _FRONTMATTER_SHOWN=$((_FRONTMATTER_SHOWN + 1))
     [ "$_FRONTMATTER_SHOWN" -le 200 ] || continue

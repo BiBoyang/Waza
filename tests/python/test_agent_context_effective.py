@@ -119,8 +119,191 @@ def test_effective_permissions_aliases_and_path_context_are_reported(tmp_path: P
     assert "permission_findings:\n  (none)" in output
     assert "path_scoped_rule_files: 2" in output
     assert "selector=project.yml files=2" in output
+    assert "path_context_match_budget_exhausted: no" in output
+    assert "duplicate_skill_names: 0" in output
+    assert "cross_runtime_shared_skill_names: 1" in output
+    assert "demo: runtimes=agents,codex content=identical" in output
+
+
+def test_same_runtime_skill_name_collision_remains_a_warning(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    write_skill(project / ".claude" / "skills" / "demo" / "SKILL.md", "demo")
+    write_skill(home / ".claude" / "skills" / "demo" / "SKILL.md", "demo")
+
+    output = run_context(project, home)
+
     assert "duplicate_skill_names: 1" in output
     assert "demo: kind=exact-copy" in output
+    assert "cross_runtime_shared_skill_names: 0" in output
+    assert "conflict_status: WARN" in output
+
+
+def test_divergent_cross_runtime_skill_requires_review(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    write_skill(home / ".agents" / "skills" / "demo" / "SKILL.md", "demo", "agents")
+    write_skill(home / ".codex" / "skills" / "demo" / "SKILL.md", "demo", "codex")
+
+    output = run_context(project, home)
+
+    assert "demo: runtimes=agents,codex content=divergent" in output
+    assert "cross_runtime_conflicts: 1" in output
+    assert "conflict_status: WARN" in output
+
+
+def test_source_skills_are_inventory_not_active_claude_skills(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    write_skill(project / "skills" / "demo" / "SKILL.md", "demo")
+
+    output = run_context(project, home)
+
+    assert "project_skills: 0" in output
+    assert "source_skills: 1" in output
+    assert "source_skill_files_scanned: 1" in output
+
+
+def test_task_scoped_env_instruction_can_replace_a_global_env_deny(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    (home / ".claude").mkdir(parents=True)
+    (home / ".claude" / "CLAUDE.md").write_text(
+        ".env may be read when the current task needs it; do not print, commit, or exfiltrate its contents.\n",
+        encoding="utf-8",
+    )
+    settings = complete_claude_floor(home)
+    deny = settings["permissions"]["deny"]
+    assert isinstance(deny, list)
+    settings["permissions"]["deny"] = [
+        rule for rule in deny if ".env" not in str(rule)
+    ]
+    write_json(home / ".claude" / "settings.json", settings)
+
+    output = run_context(project, home)
+
+    assert "env_instruction_policy: yes" in output
+    assert "deny_env_files: no" in output
+    assert "configured_sensitive_deny_floor_complete: yes" in output
+
+
+def test_oversized_path_rule_context_is_actionable(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    rule = project / ".claude" / "rules" / "large.md"
+    rule.parent.mkdir(parents=True)
+    rule.write_text(
+        '---\npaths:\n  - "Sources/**"\n---\n' + ("word " * 10_001),
+        encoding="utf-8",
+    )
+
+    output = run_context(project, home)
+
+    assert "path_context_status: WARN" in output
+    assert "one path selector loads more than 10000 context units" in output
+    assert "oversized path rules: project:large.md words=" in output
+    assert "context_units=" in output
+    assert "claude_status: WARN" in output
+
+
+def test_cjk_rule_size_is_not_hidden_by_whitespace_word_count(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    rule = project / ".claude" / "rules" / "cjk.md"
+    rule.parent.mkdir(parents=True)
+    rule.write_text(
+        '---\npaths:\n  - "Sources/**"\n---\n' + ("规则" * 3_001),
+        encoding="utf-8",
+    )
+
+    output = run_context(project, home)
+
+    assert "path_context_status: WARN" in output
+    assert "oversized path rules: project:cjk.md words=" in output
+    assert "context_units=" in output
+
+
+def test_double_star_directory_prefix_matches_root_files(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    project.mkdir()
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    (project / "Demo.swift").write_text("struct Demo {}\n", encoding="utf-8")
+    rule = project / ".claude" / "rules" / "all-swift.md"
+    rule.parent.mkdir(parents=True)
+    rule.write_text(
+        '---\npaths:\n  - "**/*.swift"\n---\nroot files included\n',
+        encoding="utf-8",
+    )
+
+    output = run_context(project, home)
+
+    assert "path=Demo.swift" in output
+    assert "rules=project:all-swift.md" in output
+
+
+def test_global_and_project_path_rules_share_the_effective_budget(tmp_path: Path):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    source = project / "Sources" / "Demo.swift"
+    source.parent.mkdir(parents=True)
+    source.write_text("struct Demo {}\n", encoding="utf-8")
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    project_rule = project / ".claude" / "rules" / "swiftui.md"
+    global_rule = home / ".claude" / "rules" / "swift.md"
+    for rule, body in ((project_rule, "project "), (global_rule, "global ")):
+        rule.parent.mkdir(parents=True)
+        rule.write_text(
+            '---\npaths:\n  - "**/*.swift"\n---\n' + (body * 5_100),
+            encoding="utf-8",
+        )
+
+    output = run_context(project, home)
+
+    assert "path_context_status: WARN" in output
+    assert "path=Sources/Demo.swift" in output
+    assert "rules=project:swiftui.md,global:swift.md" in output
+
+
+def test_effective_path_context_combines_overlapping_distinct_selectors(
+    tmp_path: Path,
+):
+    project = tmp_path / "project"
+    home = tmp_path / "home"
+    source = project / "Sources" / "Views" / "Demo.swift"
+    source.parent.mkdir(parents=True)
+    source.write_text("struct Demo {}\n", encoding="utf-8")
+    (project / "AGENTS.md").write_text("# Guide\n", encoding="utf-8")
+    rules = project / ".claude" / "rules"
+    rules.mkdir(parents=True)
+    for name, selector in (
+        ("all-sources", "Sources/**"),
+        ("all-views", "Sources/Views/**"),
+        ("demo", "Sources/Views/Demo*"),
+    ):
+        (rules / f"{name}.md").write_text(
+            f'---\npaths:\n  - "{selector}"\n---\n' + ("word " * 4_000),
+            encoding="utf-8",
+        )
+
+    output = run_context(project, home)
+
+    assert "path_context_status: WARN" in output
+    assert "one project path loads more than 10000 effective context units" in output
+    assert "path=Sources/Views/Demo.swift words=" in output
+    assert "rules=project:all-sources.md,project:all-views.md,project:demo.md" in output
 
 
 def test_missing_global_deny_categories_remain_visible(tmp_path: Path):

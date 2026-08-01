@@ -29,6 +29,7 @@ for required in \
   skills/health/scripts/check-maintainability.sh \
   skills/health/scripts/check-verifier-output.sh \
   skills/health/scripts/conversation_audit.py \
+  skills/health/scripts/read_skill_description.py \
   skills/health/scripts/run-health.ps1 \
   skills/health/scripts/scan_skill_security.py \
   skills/health/agents/inspector-maintainability.md; do
