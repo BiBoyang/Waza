@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import time
 from collections import Counter, deque
@@ -152,6 +153,8 @@ class ConversationFile:
     mtime: float
     mtime_ns: int
     size: int
+    device: int
+    inode: int
     runtime: str = "claude_project_logs"
 
 
@@ -371,8 +374,19 @@ def scan_file(
     recent_platform_interruption = False
     japanese_allowed = False
     assistant_seen = False
+    descriptor = -1
     try:
-        with item.path.open(encoding="utf-8", errors="replace") as handle:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(item.path, flags)
+        before = os.fstat(descriptor)
+        if (before.st_dev, before.st_ino) != (item.device, item.inode):
+            os.close(descriptor)
+            descriptor = -1
+            stats.read_errors += 1
+            return [], [], False, 0
+        handle = os.fdopen(descriptor, encoding="utf-8", errors="replace")
+        descriptor = -1
+        with handle:
             ordinal = 0
             while True:
                 line = handle.readline(MAX_RECORD_CHARS + 1)
@@ -422,7 +436,7 @@ def scan_file(
                         Signal(
                             label,
                             message.text,
-                            item.path.name,
+                            sanitize(item.path.name, 240),
                             item.mtime,
                             ordinal,
                             item.runtime,
@@ -430,9 +444,16 @@ def scan_file(
                     )
     except OSError:
         stats.read_errors += 1
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
     try:
-        final_stat = item.path.stat()
-        if final_stat.st_size != item.size or final_stat.st_mtime_ns != item.mtime_ns:
+        final_stat = item.path.stat(follow_symlinks=False)
+        if (
+            (final_stat.st_dev, final_stat.st_ino) != (item.device, item.inode)
+            or final_stat.st_size != item.size
+            or final_stat.st_mtime_ns != item.mtime_ns
+        ):
             stats.changed_files += 1
     except OSError:
         stats.read_errors += 1
@@ -442,7 +463,12 @@ def scan_file(
 
 def codex_project_matches(path: Path, project_root: Path) -> bool:
     try:
-        with path.open(encoding="utf-8", errors="replace") as handle:
+        if path.is_symlink():
+            return False
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(
+            os.open(path, flags), encoding="utf-8", errors="replace"
+        ) as handle:
             for _index in range(40):
                 line = handle.readline(MAX_RECORD_CHARS + 1)
                 if not line:
@@ -481,9 +507,9 @@ def newest_candidates(
     candidate_limit: Optional[int],
 ) -> tuple[list[Path], bool]:
     if not recursive:
-        return list(directory.glob("*.jsonl")), False
+        return [path for path in directory.glob("*.jsonl") if not path.is_symlink()], False
     if candidate_limit is None:
-        return list(directory.rglob("*.jsonl")), False
+        return [path for path in directory.rglob("*.jsonl") if not path.is_symlink()], False
 
     candidates: list[Path] = []
     stack = [directory]
@@ -498,7 +524,9 @@ def newest_candidates(
             (
                 entry
                 for entry in entries
-                if entry.is_file() and entry.suffix == ".jsonl"
+                if not entry.is_symlink()
+                and entry.is_file()
+                and entry.suffix == ".jsonl"
             ),
             key=lambda entry: entry.name,
             reverse=True,
@@ -507,7 +535,7 @@ def newest_candidates(
         candidates.extend(files[:remaining])
         truncated = truncated or len(files) > remaining
         directories = sorted(
-            (entry for entry in entries if entry.is_dir()),
+            (entry for entry in entries if not entry.is_symlink() and entry.is_dir()),
             key=lambda entry: entry.name,
         )
         stack.extend(directories)
@@ -525,14 +553,24 @@ def discover(
     candidate_limit: Optional[int] = None,
 ) -> tuple[list[ConversationFile], int, bool]:
     files: list[ConversationFile] = []
-    if not directory.is_dir():
+    if directory.is_symlink() or not directory.is_dir():
         return files, 0, False
-    candidates, truncated = newest_candidates(directory, recursive, candidate_limit)
+    try:
+        scan_root = directory.resolve(strict=True)
+    except OSError:
+        return files, 0, False
+    candidates, truncated = newest_candidates(scan_root, recursive, candidate_limit)
     for path in candidates:
+        if path.is_symlink():
+            continue
+        try:
+            path.relative_to(scan_root)
+        except ValueError:
+            continue
         if project_root is not None and not codex_project_matches(path, project_root):
             continue
         try:
-            stat = path.stat()
+            stat = path.stat(follow_symlinks=False)
         except OSError:
             continue
         files.append(
@@ -541,6 +579,8 @@ def discover(
                 mtime=stat.st_mtime,
                 mtime_ns=stat.st_mtime_ns,
                 size=stat.st_size,
+                device=stat.st_dev,
+                inode=stat.st_ino,
                 runtime=runtime,
             )
         )
@@ -570,7 +610,8 @@ def print_file_manifest(
     for item in files[:MAX_FILE_LIST]:
         live = "yes" if item.path in live_files else "no"
         print(
-            f"runtime={item.runtime} file={item.path.name} bytes={item.size} "
+            f"runtime={item.runtime} file={sanitize(item.path.name, 240)} "
+            f"bytes={item.size} "
             f"live_by_recent_mtime={live} "
             f"signal_scan={'yes' if item.path in signal_files else 'no'} "
             f"extract={'yes' if item.path in extract_files else 'no'}"
@@ -811,7 +852,8 @@ def audit(
         for item in extract_selection:
             messages, truncated, total = extracts.get(item.path, ([], False, 0))
             print(
-                f"--- runtime={item.runtime} file={item.path.name} messages={total} "
+                f"--- runtime={item.runtime} "
+                f"file={sanitize(item.path.name, 240)} messages={total} "
                 f"extract_truncated={'yes' if truncated else 'no'} ---"
             )
             for message in messages:

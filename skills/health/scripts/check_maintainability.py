@@ -53,6 +53,7 @@ VERIFICATION_WORD_RE = re.compile(
     r"npm test|npm run|pnpm|yarn|swift test|xcodebuild|验证|测试)",
     re.IGNORECASE,
 )
+MAX_TEXT_BYTES = 2_000_000
 
 
 # The file-walk helpers below are deliberately duplicated in
@@ -63,9 +64,16 @@ VERIFICATION_WORD_RE = re.compile(
 # standalone tool to the install layout.
 def rel(path: Path, root: Path) -> str:
     try:
-        return path.resolve().relative_to(root).as_posix()
+        value = path.resolve().relative_to(root).as_posix()
     except ValueError:
-        return path.as_posix()
+        value = path.as_posix()
+    return safe_label(value)
+
+
+def safe_label(value: str, limit: int = 500) -> str:
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        value = json.dumps(value, ensure_ascii=False)
+    return value if len(value) <= limit else f"{value[: limit - 3]}..."
 
 
 def is_excluded(path: Path, root: Path) -> bool:
@@ -75,12 +83,65 @@ def is_excluded(path: Path, root: Path) -> bool:
     return bool(MINIFIED_RE.search(path.name))
 
 
-def read_text(path: Path, limit: int | None = None) -> str:
+def is_repo_file(path: Path, root: Path) -> bool:
+    """Return true only for a regular file reached without any symlink hop."""
     try:
-        data = path.read_text(encoding="utf-8", errors="replace")
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    if not relative.parts:
+        return False
+    current = root
+    try:
+        for part in relative.parts:
+            current /= part
+            if current.is_symlink():
+                return False
+        return current.is_file()
+    except OSError:
+        return False
+
+
+def is_repo_dir(path: Path, root: Path) -> bool:
+    """Return true only for a directory reached without any symlink hop."""
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    current = root
+    try:
+        for part in relative.parts:
+            current /= part
+            if current.is_symlink():
+                return False
+        return current.is_dir()
+    except OSError:
+        return False
+
+
+def read_text(path: Path, root: Path, limit: int | None = None) -> str:
+    if not is_repo_file(path, root):
+        return ""
+    byte_limit = limit or MAX_TEXT_BYTES
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
     except OSError:
         return ""
-    return data[:limit] if limit else data
+    try:
+        chunks: list[bytes] = []
+        remaining = byte_limit
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+    except OSError:
+        return ""
+    finally:
+        os.close(descriptor)
+    return b"".join(chunks).decode("utf-8", errors="replace")
 
 
 def iter_files(root: Path) -> list[Path]:
@@ -108,7 +169,7 @@ def iter_files(root: Path) -> list[Path]:
                 if not raw_path:
                     continue
                 path = root / os.fsdecode(raw_path)
-                if path.is_file() and not is_excluded(path, root):
+                if is_repo_file(path, root) and not is_excluded(path, root):
                     files.append(path)
             return files
     except OSError:
@@ -117,19 +178,25 @@ def iter_files(root: Path) -> list[Path]:
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
-        dirnames[:] = [name for name in dirnames if name not in EXCLUDED_DIRS]
+        dirnames[:] = [
+            name for name in dirnames
+            if name not in EXCLUDED_DIRS and is_repo_dir(current / name, root)
+        ]
         if is_excluded(current, root):
             continue
         for filename in filenames:
             path = current / filename
-            if path.is_file() and not is_excluded(path, root):
+            if is_repo_file(path, root) and not is_excluded(path, root):
                 files.append(path)
     return files
 
 
-def line_count(path: Path) -> int:
+def line_count(path: Path, root: Path) -> int:
+    if not is_repo_file(path, root):
+        return 0
     try:
-        with path.open("rb") as handle:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(os.open(path, flags), "rb") as handle:
             return sum(1 for _ in handle)
     except OSError:
         return 0
@@ -141,7 +208,7 @@ def print_list(items: list[str], empty: str = "(none)", limit: int | None = None
         print(f"  {empty}")
         return
     for item in shown:
-        print(f"  {item}")
+        print(f"  {safe_label(item)}")
     if limit is not None and len(items) > limit:
         print(f"  ... {len(items) - limit} more")
 
@@ -154,18 +221,21 @@ def instruction_paths(root: Path) -> list[Path]:
         root / "GEMINI.md",
     ]
     instructions_dir = root / ".github" / "instructions"
-    if instructions_dir.is_dir():
+    if is_repo_dir(instructions_dir, root):
         candidates.extend(sorted(instructions_dir.glob("*.md")))
     rules_dir = root / ".claude" / "rules"
-    if rules_dir.is_dir():
+    if is_repo_dir(rules_dir, root):
         candidates.extend(sorted(rules_dir.glob("*.md")))
-    return [path for path in candidates if path.is_file() and not is_excluded(path, root)]
+    return [
+        path for path in candidates
+        if is_repo_file(path, root) and not is_excluded(path, root)
+    ]
 
 
-def find_text_signal(paths: list[Path], patterns: list[str]) -> bool:
+def find_text_signal(paths: list[Path], patterns: list[str], root: Path) -> bool:
     regexes = [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
     for path in paths:
-        text = read_text(path, 200_000)
+        text = read_text(path, root, 200_000)
         if any(regex.search(text) for regex in regexes):
             return True
     return False
@@ -175,9 +245,9 @@ def parse_makefile(root: Path) -> tuple[set[str], list[str]]:
     makefile = root / "Makefile"
     targets: set[str] = set()
     commands: list[str] = []
-    if not makefile.is_file():
+    if not is_repo_file(makefile, root):
         return targets, commands
-    for line in read_text(makefile).splitlines():
+    for line in read_text(makefile, root).splitlines():
         match = MAKE_RE.match(line)
         if not match:
             continue
@@ -194,10 +264,10 @@ def parse_package_json(root: Path) -> tuple[set[str], list[str]]:
     package = root / "package.json"
     script_names: set[str] = set()
     commands: list[str] = []
-    if not package.is_file():
+    if not is_repo_file(package, root):
         return script_names, commands
     try:
-        data = json.loads(read_text(package))
+        data = json.loads(read_text(package, root))
     except json.JSONDecodeError:
         return script_names, commands
     scripts = data.get("scripts", {})
@@ -212,11 +282,17 @@ def parse_package_json(root: Path) -> tuple[set[str], list[str]]:
 
 def parse_ci_commands(root: Path) -> list[str]:
     workflows_dir = root / ".github" / "workflows"
-    workflows = sorted(workflows_dir.glob("*.yml")) if workflows_dir.is_dir() else []
-    workflows += sorted(workflows_dir.glob("*.yaml")) if workflows_dir.is_dir() else []
+    workflows = (
+        sorted(path for path in workflows_dir.glob("*.yml") if is_repo_file(path, root))
+        if is_repo_dir(workflows_dir, root) else []
+    )
+    workflows += (
+        sorted(path for path in workflows_dir.glob("*.yaml") if is_repo_file(path, root))
+        if is_repo_dir(workflows_dir, root) else []
+    )
     commands: list[str] = []
     for workflow in workflows:
-        for raw in read_text(workflow).splitlines():
+        for raw in read_text(workflow, root).splitlines():
             line = raw.strip()
             if line.startswith("- run:"):
                 command = line.split("- run:", 1)[1].strip().strip("'\"")
@@ -233,7 +309,7 @@ def scan_markdown_links(files: list[Path], root: Path) -> list[str]:
     missing: list[str] = []
     markdown_files = [path for path in files if path.suffix.lower() == ".md"]
     for path in markdown_files:
-        for lineno, line in enumerate(read_text(path).splitlines(), 1):
+        for lineno, line in enumerate(read_text(path, root).splitlines(), 1):
             for raw in MARKDOWN_LINK_RE.findall(line):
                 target = raw.strip().split()[0].strip("<>")
                 if not target or target.startswith("#") or URL_RE.match(target):
@@ -247,8 +323,8 @@ def scan_markdown_links(files: list[Path], root: Path) -> list[str]:
                 # broken-doc finding.
                 if target.startswith("/"):
                     continue
-                full = (path.parent / target).resolve()
-                if not full.exists():
+                full = path.parent / target
+                if not (is_repo_file(full, root) or is_repo_dir(full, root)):
                     missing.append(f"{rel(path, root)}:{lineno} -> {target}")
     return missing
 
@@ -260,20 +336,20 @@ def verification_surface(
     package_scripts, package_commands = parse_package_json(root)
     commands = make_commands + package_commands + parse_ci_commands(root)
 
-    if (root / "Cargo.toml").is_file():
+    if is_repo_file(root / "Cargo.toml", root):
         commands.extend(["cargo test", "cargo check"])
-    if (root / "go.mod").is_file():
+    if is_repo_file(root / "go.mod", root):
         commands.append("go test ./...")
-    if (root / "pyproject.toml").is_file() or (root / "pytest.ini").is_file():
+    if is_repo_file(root / "pyproject.toml", root) or is_repo_file(root / "pytest.ini", root):
         commands.append("pytest")
-    if (root / "pom.xml").is_file():
+    if is_repo_file(root / "pom.xml", root):
         commands.append("mvn test")
-    if (root / "deno.json").is_file() or (root / "deno.jsonc").is_file():
+    if is_repo_file(root / "deno.json", root) or is_repo_file(root / "deno.jsonc", root):
         commands.append("deno test")
 
     missing: list[str] = []
     for path in instruction_files:
-        text = read_text(path, 200_000)
+        text = read_text(path, root, 200_000)
         snippets: list[str] = []
         for raw_line in text.splitlines():
             snippets.extend(re.findall(r"`([^`]+)`", raw_line))
@@ -306,7 +382,7 @@ def hotspot_ownership_surface(
 
     snippets: list[str] = []
     for path in instruction_files:
-        snippets.append(f"\n# {rel(path, root)}\n{read_text(path, 200_000)}")
+        snippets.append(f"\n# {rel(path, root)}\n{read_text(path, root, 200_000)}")
     instruction_text = "\n".join(snippets)
     lower_text = instruction_text.lower()
     instruction_lines = instruction_text.splitlines()
@@ -400,7 +476,7 @@ def main() -> int:
     mode = args.mode
 
     if not root.is_dir():
-        print(f"Repo root not found: {root}", file=sys.stderr)
+        print(f"Repo root not found: {safe_label(root.as_posix())}", file=sys.stderr)
         return 2
 
     files = iter_files(root)
@@ -412,12 +488,16 @@ def main() -> int:
             "Makefile", "package.json", "Cargo.toml", "go.mod", "pyproject.toml",
             "pytest.ini", "pom.xml", "deno.json", "deno.jsonc",
         ]
-        if (root / name).is_file()
+        if is_repo_file(root / name, root)
     ]
     workflows_dir = root / ".github" / "workflows"
     workflow_count = 0
-    if workflows_dir.is_dir():
-        workflow_count = len(list(workflows_dir.glob("*.yml"))) + len(list(workflows_dir.glob("*.yaml")))
+    if is_repo_dir(workflows_dir, root):
+        workflow_count = sum(
+            1
+            for path in list(workflows_dir.glob("*.yml")) + list(workflows_dir.glob("*.yaml"))
+            if is_repo_file(path, root)
+        )
     if workflow_count:
         detected_manifests.append(f".github/workflows ({workflow_count})")
 
@@ -428,7 +508,7 @@ def main() -> int:
             size = path.stat().st_size
         except OSError:
             size = 0
-        source_stats.append((line_count(path), size, path))
+        source_stats.append((line_count(path, root), size, path))
     source_stats.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
     dir_counts: Counter[str] = Counter()
@@ -441,32 +521,41 @@ def main() -> int:
     project_map = find_text_signal(
         instruction_files,
         [r"repository map", r"project map", r"repo map", r"\bproject\b", r"目录", r"仓库", r"结构"],
+        root,
     )
     instruction_verification = find_text_signal(
         instruction_files,
         [r"verification", r"test plan", r"make test", r"npm test", r"pytest", r"cargo test", r"验证", r"测试"],
+        root,
     )
     boundaries = find_text_signal(
         instruction_files,
         [r"not for", r"do not", r"non-?goals?", r"scope", r"boundar", r"never", r"avoid", r"边界", r"非目标", r"不要"],
+        root,
     )
     commands, missing_references, make_targets, _package_scripts = verification_surface(root, instruction_files)
     stable_make_targets = sorted(make_targets & {"check", "test", "verify"})
     wrapper_warnings: list[str] = []
-    if len(commands) >= 2 and (root / "Makefile").is_file() and not stable_make_targets:
+    if len(commands) >= 2 and is_repo_file(root / "Makefile", root) and not stable_make_targets:
         wrapper_warnings.append(
             "multiple verification commands discovered but Makefile lacks check/test/verify wrapper"
         )
 
     decision_artifacts = {
-        "docs_dir": (root / "docs").is_dir(),
-        "specs_dir": (root / "specs").is_dir(),
-        "specify_dir": (root / ".specify").is_dir(),
-        "handoff_md": any(path.name.upper() == "HANDOFF.MD" for path in root.glob("*.md")),
-        "changelog": any(path.name.upper().startswith("CHANGELOG") for path in root.glob("*")),
-        "issue_templates": (root / ".github" / "ISSUE_TEMPLATE").exists(),
+        "docs_dir": is_repo_dir(root / "docs", root),
+        "specs_dir": is_repo_dir(root / "specs", root),
+        "specify_dir": is_repo_dir(root / ".specify", root),
+        "handoff_md": any(
+            path.name.upper() == "HANDOFF.MD" and is_repo_file(path, root)
+            for path in root.glob("*.md")
+        ),
+        "changelog": any(
+            path.name.upper().startswith("CHANGELOG") and is_repo_file(path, root)
+            for path in root.glob("*")
+        ),
+        "issue_templates": is_repo_dir(root / ".github" / "ISSUE_TEMPLATE", root),
         "pr_template": any(
-            path.is_file()
+            is_repo_file(path, root)
             for path in [
                 root / ".github" / "pull_request_template.md",
                 root / ".github" / "PULL_REQUEST_TEMPLATE.md",
@@ -477,7 +566,7 @@ def main() -> int:
     todo_counts: Counter[str] = Counter()
     todo_total = 0
     for path in source_files:
-        text = read_text(path, 200_000)
+        text = read_text(path, root, 200_000)
         # Count marker-bearing lines, not marker words. Documentation often names
         # the full marker family in one rule line; treating that as four issues
         # makes the checker flag itself instead of real TODO piles.
@@ -586,15 +675,19 @@ def main() -> int:
 
     print("=== AI CONTEXT SURFACE ===")
     print(f"context_status: {context_status}")
-    print(f"AGENTS.md: {'yes' if (root / 'AGENTS.md').is_file() else 'no'}")
-    print(f"CLAUDE.md: {'yes' if (root / 'CLAUDE.md').is_file() else 'no'}")
-    print(f".github/copilot-instructions.md: {'yes' if (root / '.github' / 'copilot-instructions.md').is_file() else 'no'}")
+    print(f"AGENTS.md: {'yes' if is_repo_file(root / 'AGENTS.md', root) else 'no'}")
+    print(f"CLAUDE.md: {'yes' if is_repo_file(root / 'CLAUDE.md', root) else 'no'}")
+    print(f".github/copilot-instructions.md: {'yes' if is_repo_file(root / '.github' / 'copilot-instructions.md', root) else 'no'}")
     github_instruction_count = (
-        len(list((root / ".github" / "instructions").glob("*.md")))
-        if (root / ".github" / "instructions").is_dir() else 0
+        sum(
+            1
+            for path in (root / ".github" / "instructions").glob("*.md")
+            if is_repo_file(path, root)
+        )
+        if is_repo_dir(root / ".github" / "instructions", root) else 0
     )
     print(f".github/instructions/*.md: {github_instruction_count}")
-    print(f"GEMINI.md: {'yes' if (root / 'GEMINI.md').is_file() else 'no'}")
+    print(f"GEMINI.md: {'yes' if is_repo_file(root / 'GEMINI.md', root) else 'no'}")
     print(f"project_map: {'yes' if project_map else 'no'}")
     print(f"verification_guidance: {'yes' if instruction_verification else 'no'}")
     print(f"boundary_guidance: {'yes' if boundaries else 'no'}")
@@ -616,7 +709,7 @@ def main() -> int:
 
     print("=== VERIFICATION WRAPPER SURFACE ===")
     print(f"wrapper_status: {wrapper_status}")
-    print(f"makefile_present: {'yes' if (root / 'Makefile').is_file() else 'no'}")
+    print(f"makefile_present: {'yes' if is_repo_file(root / 'Makefile', root) else 'no'}")
     print("stable_make_targets:")
     print_list([f"make {target}" for target in stable_make_targets])
     print("wrapper_findings:")
@@ -636,7 +729,7 @@ def main() -> int:
     print_list(large_files[: (10 if mode == "deep" else 5)])
     print(f"broken_doc_references: {doc_ref_status}")
     if doc_ref_detail and (mode == "deep" or doc_ref_status == "fail"):
-        print(f"broken_doc_reference_detail: {doc_ref_detail}")
+        print(f"broken_doc_reference_detail: {safe_label(doc_ref_detail)}")
     print("drift_findings:")
     print_list(drift_warnings)
 

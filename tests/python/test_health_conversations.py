@@ -916,3 +916,46 @@ def test_large_tool_output_is_counted_without_rendering_its_payload(tmp_path: Pa
     assert "tool_errors_seen: 1" in output
     assert marker not in output
     assert "json.dumps(payload" not in SCRIPT.read_text(encoding="utf-8")
+
+
+def test_conversation_discovery_rejects_file_and_directory_symlinks(tmp_path: Path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    write_session(
+        sessions / "safe.jsonl",
+        [record("assistant", "safe answer"), record("user", "还是不对")],
+        100,
+    )
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    write_session(
+        outside / "escaped.jsonl",
+        [record("assistant", "answer"), record("user", "ESCAPED-CONVERSATION")],
+        50,
+    )
+    (sessions / "escaped.jsonl").symlink_to(outside / "escaped.jsonl")
+    (sessions / "escaped-dir").symlink_to(outside, target_is_directory=True)
+
+    output = run_audit(sessions, "deep")
+
+    assert "files_discovered: 1" in output
+    assert "ESCAPED-CONVERSATION" not in output
+    assert "USER CORRECTION:" in output
+
+
+def test_control_characters_in_filenames_cannot_forge_report_sections(tmp_path: Path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    forged_name = "session\n=== FORGED CONVERSATION SECTION ===.jsonl"
+    write_session(
+        sessions / forged_name,
+        [record("assistant", "answer"), record("user", "还是不对")],
+        100,
+    )
+
+    output = run_audit(sessions, "deep")
+
+    assert "=== FORGED CONVERSATION SECTION ===" not in output.splitlines()
+    assert "files_discovered: 1" in output
+    assert "USER CORRECTION:" in output

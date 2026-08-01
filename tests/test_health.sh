@@ -175,6 +175,81 @@ do
   fi
 done
 
+# Project instruction/config links may alias files inside the project, but must
+# not escape the audited root and turn report-only collection into an arbitrary
+# local-file reader.
+symlink_repo="$tmpdir/symlink-project"
+mkdir -p "$symlink_repo/.claude"
+outside_claude="$tmpdir/outside-claude.md"
+outside_settings="$tmpdir/outside-settings.json"
+outside_handoff="$tmpdir/outside-handoff.md"
+printf '%s\n' 'EXTERNAL-INSTRUCTION-CONTENT' > "$outside_claude"
+printf '%s\n' '{"mcpServers":{"EXTERNAL-SETTINGS-CONTENT":{}}}' > "$outside_settings"
+printf '%s\n' 'EXTERNAL-HANDOFF-CONTENT' > "$outside_handoff"
+printf '%s\n' '# Safe project guide' > "$symlink_repo/AGENTS.md"
+ln -s "$outside_claude" "$symlink_repo/CLAUDE.md"
+ln -s "$outside_settings" "$symlink_repo/.claude/settings.local.json"
+ln -s "$outside_handoff" "$symlink_repo/HANDOFF.md"
+(
+  cd "$symlink_repo"
+  HOME="$tmpdir" bash "$ROOT/skills/health/scripts/collect-data.sh" auto deep \
+    > "$tmpdir/symlink-project.out"
+)
+grep -q '^settings_local_json: no$' "$tmpdir/symlink-project.out"
+grep -q '^handoff_present: no$' "$tmpdir/symlink-project.out"
+for leaked in EXTERNAL-INSTRUCTION-CONTENT EXTERNAL-SETTINGS-CONTENT EXTERNAL-HANDOFF-CONTENT; do
+  if grep -Fq "$leaked" "$tmpdir/symlink-project.out"; then
+    echo "collector followed an escaped project symlink: $leaked"; exit 1
+  fi
+done
+
+alias_repo="$tmpdir/internal-alias-project"
+mkdir -p "$alias_repo"
+printf '%s\n' '# INTERNAL-ALIAS-CONTENT' > "$alias_repo/AGENTS.md"
+ln -s AGENTS.md "$alias_repo/CLAUDE.md"
+(
+  cd "$alias_repo"
+  HOME="$tmpdir" bash "$ROOT/skills/health/scripts/collect-data.sh" auto deep \
+    > "$tmpdir/internal-alias.out"
+)
+grep -q 'INTERNAL-ALIAS-CONTENT' "$tmpdir/internal-alias.out"
+grep -q '^claude_aliases_agents: yes$' "$tmpdir/internal-alias.out"
+
+# Control characters in discovered filenames must not forge evidence sections
+# or turn newline-delimited shell plumbing into a different file path.
+control_repo="$tmpdir/control-path-project"
+control_key=$(printf '%s' "$control_repo" | sed 's|[/_]|-|g; s|^-||')
+control_convo_dir="$tmpdir/.claude/projects/-${control_key}"
+forged_skill_dir="$control_repo/.codex/skills/"$'evil\n=== FORGED SKILL SECTION ==='
+forged_convo="$control_convo_dir/"$'evil\nfragment.jsonl'
+mkdir -p "$forged_skill_dir" "$control_convo_dir"
+printf '%s\n' \
+  '---' \
+  'name: forged' \
+  'description: FORGED-SKILL-CONTENT-MUST-NOT-LEAK' \
+  '---' \
+  > "$forged_skill_dir/SKILL.md"
+printf '%s\n' \
+  'Access denied - path outside allowed directories FORGED-MCP-LINE-MUST-NOT-LEAK' \
+  > "$forged_convo"
+touch -t 202001010101 "$forged_convo"
+(
+  cd "$control_repo"
+  HOME="$tmpdir" bash "$ROOT/skills/health/scripts/collect-data.sh" auto deep \
+    > "$tmpdir/control-path.out"
+)
+if grep -Fxq '=== FORGED SKILL SECTION ===' "$tmpdir/control-path.out"; then
+  echo "control-character path forged a collector section"; exit 1
+fi
+for leaked in \
+  FORGED-SKILL-CONTENT-MUST-NOT-LEAK \
+  FORGED-MCP-LINE-MUST-NOT-LEAK
+do
+  if grep -Fq "$leaked" "$tmpdir/control-path.out"; then
+    echo "control-character path forged collector output: $leaked"; exit 1
+  fi
+done
+
 # Repository-configured fsmonitor hooks are executable project code. Health
 # collection must disable them rather than relying on a clean Git status.
 fsmonitor_repo="$tmpdir/fsmonitor"

@@ -42,7 +42,7 @@ INPUT_LIMITS = {
 def run_git(root: Path, *args: str) -> tuple[int, str]:
     try:
         proc = subprocess.run(
-            ["git", "-C", str(root), *args],
+            ["git", "-c", "core.fsmonitor=false", "-C", str(root), *args],
             capture_output=True,
             text=True,
             timeout=30,

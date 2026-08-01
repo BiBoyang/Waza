@@ -256,4 +256,32 @@ bash "$CHECKER" "$hotspot_collision" deep >"$tmpdir/hotspot-collision.out"
 grep -q '^hotspot_ownership_status: WARN$' "$tmpdir/hotspot-collision.out"
 grep -q 'src/main.py.*reason=not mentioned in agent instructions' "$tmpdir/hotspot-collision.out"
 
+# Case 13: report-only file discovery must not execute Git fsmonitor hooks or
+# follow repository-controlled symlinks outside the audited project.
+guarded="$tmpdir/guarded"
+mkdir -p "$guarded"
+write_standard_agents_md "$guarded/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$guarded/Makefile"
+(cd "$guarded" && git init -q && git add AGENTS.md Makefile && git \
+  -c user.name=waza -c user.email=waza@test commit -qm init)
+fsmonitor_marker="$tmpdir/maintainability-fsmonitor.executed"
+fsmonitor_hook="$guarded/fsmonitor.sh"
+printf '%s\n' \
+  '#!/bin/sh' \
+  "printf executed > '$fsmonitor_marker'" \
+  'exit 0' \
+  > "$fsmonitor_hook"
+chmod +x "$fsmonitor_hook"
+git -C "$guarded" config core.fsmonitor "$fsmonitor_hook"
+outside_source="$tmpdir/private-maintainability.md"
+printf '%s\n' '# PRIVATE_MAINTAINABILITY_TOKEN' '<!-- TODO -->' > "$outside_source"
+ln -s "$outside_source" "$guarded/private-maintainability.md"
+bash "$CHECKER" "$guarded" deep >"$tmpdir/guarded.out"
+test ! -e "$fsmonitor_marker" || {
+  echo "maintainability audit executed the target repository fsmonitor hook"; exit 1
+}
+if grep -qE 'PRIVATE_MAINTAINABILITY_TOKEN|private-maintainability.md' "$tmpdir/guarded.out"; then
+  echo "maintainability audit followed a repository-controlled symlink"; exit 1
+fi
+
 echo "maintainability smoke: ok"

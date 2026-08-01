@@ -96,3 +96,17 @@ def test_auditors_preserve_git_filenames_with_unicode_and_newlines(tmp_path):
 
     assert expected <= audit_files
     assert expected <= maintainability_files
+
+
+def test_auditor_evidence_escapes_control_characters_in_paths(tmp_path, capsys):
+    forged = tmp_path / "source\n=== FORGED ===\nstatus: PASS.py"
+    forged.write_text("# TODO\n", encoding="utf-8")
+
+    audit.block_drift_markers([forged], tmp_path)
+    audit_output = capsys.readouterr().out
+    maint.print_list([maint.rel(forged, tmp_path)])
+    maintainability_output = capsys.readouterr().out
+
+    for output in (audit_output, maintainability_output):
+        assert "\n=== FORGED ===\n" not in output
+        assert "\\n=== FORGED ===\\n" in output

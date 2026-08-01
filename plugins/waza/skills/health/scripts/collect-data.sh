@@ -111,17 +111,35 @@ for candidate in python3 python; do
   break
 done
 
-health_path_label() {
-  local path="$1"
-  case "$path" in
-    "$HEALTH_TARGET") printf '%s\n' 'project:/' ;;
-    "$HEALTH_TARGET"/*) printf 'project:/%s\n' "${path#"$HEALTH_TARGET"/}" ;;
-    "$HOME") printf '%c/\n' '~' ;;
-    "$HOME"/*) printf '%c/%s\n' '~' "${path#"$HOME"/}" ;;
-    "$HEALTH_HOME") printf '%c/\n' '~' ;;
-    "$HEALTH_HOME"/*) printf '%c/%s\n' '~' "${path#"$HEALTH_HOME"/}" ;;
-    *) printf 'external:/%s\n' "${path##*/}" ;;
+safe_health_text() {
+  printf '%s' "$1" | LC_ALL=C tr '\000-\037\177' '_'
+  printf '\n'
+}
+
+path_has_controls() {
+  case "$1" in
+    *$'\n'*|*$'\r'*) return 0 ;;
   esac
+  printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+
+if path_has_controls "$P" || path_has_controls "$HOME" || path_has_controls "$SCRIPT_DIR"; then
+  echo "Health cannot audit roots whose paths contain control characters." >&2
+  exit 2
+fi
+
+health_path_label() {
+  local path="$1" label home_prefix='~'
+  case "$path" in
+    "$HEALTH_TARGET") label='project:/' ;;
+    "$HEALTH_TARGET"/*) label="project:/${path#"$HEALTH_TARGET"/}" ;;
+    "$HOME") label="${home_prefix}/" ;;
+    "$HOME"/*) label="${home_prefix}/${path#"$HOME"/}" ;;
+    "$HEALTH_HOME") label="${home_prefix}/" ;;
+    "$HEALTH_HOME"/*) label="${home_prefix}/${path#"$HEALTH_HOME"/}" ;;
+    *) label="external:/${path##*/}" ;;
+  esac
+  safe_health_text "$label"
 }
 
 redact_health_stream() {
@@ -150,24 +168,26 @@ if truncated:
 }
 
 print_redacted_file() {
-  local file="$1"
-  if [ ! -f "$file" ]; then
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -z "$canonical" ]; then
     echo "(none)"
     return 0
   fi
-  LC_ALL=C head -c 131073 "$file" 2>/dev/null | redact_health_stream
+  LC_ALL=C head -c 131073 "$canonical" 2>/dev/null | redact_health_stream
 }
 
 print_sensitive_file_summary() {
-  local label="$1" file="$2"
-  if [ ! -f "$file" ]; then
+  local label="$1" file="$2" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -z "$canonical" ]; then
     echo "${label}_present: no"
     return 0
   fi
   echo "${label}_present: yes"
-  echo "${label}_lines: $(count_file_lines "$file")"
-  echo "${label}_words: $(count_file_words "$file")"
-  echo "${label}_bytes: $(wc -c < "$file" | tr -d ' ')"
+  echo "${label}_lines: $(count_file_lines "$canonical")"
+  echo "${label}_words: $(count_file_words "$canonical")"
+  echo "${label}_bytes: $(wc -c < "$canonical" | tr -d ' ')"
 }
 
 case "$MODE" in
@@ -249,26 +269,35 @@ resolve_symlink() {
 }
 
 count_file_lines() {
-  local file="$1"
-  if [ -f "$file" ]; then
-    wc -l < "$file" | tr -d ' '
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -n "$canonical" ]; then
+    wc -l < "$canonical" | tr -d ' '
   else
     echo 0
   fi
 }
 
 count_file_words() {
-  local file="$1"
-  if [ -f "$file" ]; then
-    wc -w < "$file" | tr -d ' '
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -n "$canonical" ]; then
+    wc -w < "$canonical" | tr -d ' '
   else
     echo 0
   fi
 }
 
 list_rule_files() {
+  local file canonical
   if [ -d "$P/.claude/rules" ]; then
-    find "$P/.claude/rules" -type f -name "*.md" 2>/dev/null | sort || true
+    while IFS= read -r -d '' file; do
+      path_has_controls "$file" && continue
+      canonical=$(canonical_health_file "$file" || true)
+      [ -n "$canonical" ] || continue
+      printf '%s\n' "$canonical"
+    done < <(find "$P/.claude/rules" -type f -name "*.md" -print0 2>/dev/null || true) \
+      | LC_ALL=C sort
   fi
 }
 
@@ -291,18 +320,20 @@ print_rule_files() {
 print_file_summary() {
   local label="$1"
   local file="$2"
+  local canonical
 
-  if [ ! -f "$file" ]; then
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -z "$canonical" ]; then
     echo "${label}_present: no"
     return
   fi
 
   echo "${label}_present: yes"
-  echo "${label}_lines: $(count_file_lines "$file")"
-  echo "${label}_words: $(count_file_words "$file")"
+  echo "${label}_lines: $(count_file_lines "$canonical")"
+  echo "${label}_words: $(count_file_words "$canonical")"
 
   local headings
-  headings=$(grep -nE '^[[:space:]]*#{1,3}[[:space:]]+' "$file" 2>/dev/null | head -8 || true)
+  headings=$(grep -nE '^[[:space:]]*#{1,3}[[:space:]]+' "$canonical" 2>/dev/null | head -8 || true)
   if [ -n "$headings" ]; then
     echo "${label}_headings:"
     printf '%s\n' "$headings" | sed 's/^/  /'
@@ -310,15 +341,16 @@ print_file_summary() {
 }
 
 print_settings_summary() {
-  local file="$1"
-  if [ ! -f "$file" ]; then
+  local file="$1" canonical
+  canonical=$(canonical_health_file "$file" || true)
+  if [ -z "$canonical" ]; then
     echo "settings_local_json: no"
     return
   fi
 
   echo "settings_local_json: yes"
-  echo "settings_local_json_lines: $(count_file_lines "$file")"
-  echo "settings_local_json_bytes: $(wc -c < "$file" | tr -d ' ')"
+  echo "settings_local_json_lines: $(count_file_lines "$canonical")"
+  echo "settings_local_json_bytes: $(wc -c < "$canonical" | tr -d ' ')"
 }
 
 print_rule_file_summary() {
@@ -404,14 +436,20 @@ skill_description_word_count() {
 list_skill_files() {
   local dir="$1" link target file relative
   [ -d "$dir" ] || return 0
+  path_has_controls "$dir" && return 0
   path_is_sensitive "$dir" && return 0
-  find "$dir" -maxdepth 4 \
+  while IFS= read -r -d '' file; do
+    path_has_controls "$file" && continue
+    printf '%s\n' "$file"
+  done < <(find "$dir" -maxdepth 4 \
     \( -type d \( -iname 'secrets' -o -iname '.env' -o -iname '.env.*' -o -iname '*credential*' \) -prune \) \
-    -o -name "SKILL.md" -print 2>/dev/null || true
-  while IFS= read -r link; do
+    -o -name "SKILL.md" -print0 2>/dev/null || true)
+  while IFS= read -r -d '' link; do
     [ -n "$link" ] || continue
+    path_has_controls "$link" && continue
     target=$(resolve_symlink "$link" || true)
     [ -n "$target" ] && [ -d "$target" ] || continue
+    path_has_controls "$target" && continue
     path_is_sensitive "$target" && continue
     if is_project_skill_path "$link" && ! path_is_within "$target" "$HEALTH_TARGET"; then
       continue
@@ -419,12 +457,13 @@ list_skill_files() {
     if [ -f "$target/SKILL.md" ]; then
       printf '%s/SKILL.md\n' "$link"
     elif [ -d "$target/skills" ]; then
-      while IFS= read -r file; do
+      while IFS= read -r -d '' file; do
         relative=${file#"$target"/}
+        path_has_controls "$file" && continue
         printf '%s/%s\n' "$link" "$relative"
-      done < <(find "$target/skills" -maxdepth 2 -name "SKILL.md" 2>/dev/null || true)
+      done < <(find "$target/skills" -maxdepth 2 -name "SKILL.md" -print0 2>/dev/null || true)
     fi
-  done < <(find "$dir" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true)
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 -type l -print0 2>/dev/null || true)
 }
 
 direct_skill_roots() {
@@ -438,14 +477,20 @@ direct_skill_roots() {
 }
 
 codex_plugin_candidate_skill_roots() {
-  local cache="$HOME/.codex/plugins/cache"
+  local cache="$HOME/.codex/plugins/cache" dir
   [ -d "$cache" ] || return 0
-  find "$cache" -mindepth 4 -maxdepth 4 -type d -name skills 2>/dev/null | sort || true
+  while IFS= read -r -d '' dir; do
+    path_has_controls "$dir" && continue
+    printf '%s\n' "$dir"
+  done < <(find "$cache" -mindepth 4 -maxdepth 4 -type d -name skills -print0 2>/dev/null || true) \
+    | LC_ALL=C sort
 }
 
 skill_roots() {
+  local plugin_roots
+  plugin_roots=$(codex_plugin_candidate_skill_roots)
   direct_skill_roots
-  codex_plugin_candidate_skill_roots
+  [ -n "$plugin_roots" ] && printf '%s\n' "$plugin_roots"
 }
 
 path_is_within() {
@@ -457,6 +502,16 @@ is_project_skill_path() {
   local path="$1"
   case "$path/" in
     "$P/.claude/skills/"*|"$P/.agents/skills/"*|"$P/.codex/skills/"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_declared_skill_path() {
+  local path="$1"
+  case "$path/" in
+    "$P/.claude/skills/"*|"$P/.agents/skills/"*|"$P/.codex/skills/"*|\
+    "$HOME/.claude/skills/"*|"$HOME/.agents/skills/"*|"$HOME/.codex/skills/"*|\
+    "$HOME/.codex/plugins/cache/"*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -474,8 +529,26 @@ path_is_sensitive() {
   esac
 }
 
+canonical_health_file() {
+  local file="$1" canonical scope_root
+  path_has_controls "$file" && return 1
+  case "$file/" in
+    "$P/"*|"$HEALTH_TARGET/"*) scope_root="$HEALTH_TARGET" ;;
+    "$HOME/"*|"$HEALTH_HOME/"*) scope_root="$HEALTH_HOME" ;;
+    *) return 1 ;;
+  esac
+  canonical=$(resolve_symlink "$file" 2>/dev/null || true)
+  [ -n "$canonical" ] && [ -f "$canonical" ] || return 1
+  path_has_controls "$canonical" && return 1
+  path_is_sensitive "$canonical" && return 1
+  path_is_within "$canonical" "$scope_root" || return 1
+  printf '%s\n' "$canonical"
+}
+
 canonical_skill_file() {
   local file="$1" dir base canonical
+  path_has_controls "$file" && return 1
+  is_declared_skill_path "$file" || return 1
   [ -L "$file" ] && return 1
   dir=${file%/*}
   base=${file##*/}
@@ -514,13 +587,14 @@ print_skill_root_coverage() {
   while IFS= read -r dir; do
     [ -d "$dir" ] && direct_present=$((direct_present + 1))
     [ -d "$dir" ] || continue
-    while IFS= read -r link; do
+    while IFS= read -r -d '' link; do
       [ -n "$link" ] || continue
+      path_has_controls "$link" && continue
       target=$(resolve_symlink "$link" || true)
-      if [ -z "$target" ] || path_is_sensitive "$target" || { is_project_skill_path "$link" && ! path_is_within "$target" "$HEALTH_TARGET"; }; then
+      if [ -z "$target" ] || path_has_controls "$target" || path_is_sensitive "$target" || { is_project_skill_path "$link" && ! path_is_within "$target" "$HEALTH_TARGET"; }; then
         rejected_roots=$((rejected_roots + 1))
       fi
-    done < <(find "$dir" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true)
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 -type l -print0 2>/dev/null || true)
   done < <(direct_skill_roots)
   plugin_candidates=$(codex_plugin_candidate_skill_roots | wc -l | tr -d ' ')
   echo "direct_skill_roots_declared: 6"
@@ -533,6 +607,7 @@ print_skill_root_coverage() {
 
 sanitize_git_remote() {
   local remote="$1" scheme rest authority path host
+  remote=$(safe_health_text "$remote")
   case "$remote" in
     *://*)
       scheme=${remote%%://*}
@@ -550,10 +625,15 @@ sanitize_git_remote() {
       printf '%s://%s%s\n' "$scheme" "$authority" "$path"
       ;;
     *@*:*)
-      rest=${remote#*@}
+      rest=${remote%%\#*}
+      rest=${rest%%\?*}
+      rest=${rest#*@}
       host=${rest%%:*}
       path=${rest#*:}
-      [ -n "$host" ] && [ -n "$path" ] || { printf '%s\n' "redacted"; return; }
+      if [ -z "$host" ] || [ -z "$path" ]; then
+        printf '%s\n' "redacted"
+        return
+      fi
       printf 'ssh://%s/%s\n' "$host" "$path"
       ;;
     /*|./*|../*)
@@ -573,20 +653,32 @@ is_current_health_skill() {
 }
 
 list_conversation_files() {
+  local file canonical mtime
   [ -d "$CONVO_DIR" ] || return 0
-  ls -1t "$CONVO_DIR"/*.jsonl 2>/dev/null || true
+  while IFS= read -r -d '' file; do
+    path_has_controls "$file" && continue
+    canonical=$(canonical_health_file "$file" || true)
+    [ -n "$canonical" ] || continue
+    path_is_within "$canonical" "$CONVO_DIR" || continue
+    mtime=$(stat -f '%m' "$canonical" 2>/dev/null || stat -c '%Y' "$canonical" 2>/dev/null || echo 0)
+    printf '%s\t%s\n' "$mtime" "$canonical"
+  done < <(find "$CONVO_DIR" -maxdepth 1 -type f -name '*.jsonl' -print0 2>/dev/null || true) \
+    | sort -nr | cut -f2-
 }
 
 print_mcp_access_denials() {
-  local files file chunk found=0
+  local files file canonical chunk found=0
   files=$(list_conversation_files | head -5)
   if [ -z "$files" ]; then
     echo "(no conversation files)"
     return
   fi
   while IFS= read -r file; do
-    [ -f "$file" ] || continue
-    chunk=$(head -c 1048576 "$file" | grep -Em 2 'Access denied - path outside allowed directories|tool-results/.+ not in ' 2>/dev/null || true)
+    path_is_within "$file" "$CONVO_DIR" || continue
+    canonical=$(canonical_health_file "$file" || true)
+    [ -n "$canonical" ] || continue
+    path_is_within "$canonical" "$CONVO_DIR" || continue
+    chunk=$(head -c 1048576 "$canonical" | grep -Em 2 'Access denied - path outside allowed directories|tool-results/.+ not in ' 2>/dev/null || true)
     if [ -n "$chunk" ]; then
       found=1
       printf '%s\n' "$chunk" | redact_health_stream
@@ -662,7 +754,8 @@ echo "local_claude_words: $(count_file_words "$P/CLAUDE.md")"
 echo "rules_words: $(rules_word_count)"
 echo "skill_desc_words: $(skill_description_word_count)"
 if [ -n "$PYTHON_BIN" ]; then
-"$PYTHON_BIN" -I - "$SETTINGS" "$MODE" <<'PYEOF' 2>/dev/null || echo "(unavailable)"
+SAFE_SETTINGS=$(canonical_health_file "$SETTINGS" || true)
+"$PYTHON_BIN" -I - "$SAFE_SETTINGS" "$MODE" <<'PYEOF' 2>/dev/null || echo "(unavailable)"
 import json
 import os
 import re
@@ -763,10 +856,19 @@ fi
 
 echo "[6/12] Nested CLAUDE.md + gitignore..."
 echo "=== NESTED CLAUDE.md ==="
-_NESTED_CLAUDE=$(find "$P" -maxdepth 4 -name "CLAUDE.md" -not -path "$P/CLAUDE.md" -not -path "*/.git/*" -not -path "*/node_modules/*" 2>/dev/null || true)
-if [ -n "$_NESTED_CLAUDE" ]; then
-  _NESTED_COUNT=$(printf '%s\n' "$_NESTED_CLAUDE" | wc -l | tr -d ' ')
-  printf '%s\n' "$_NESTED_CLAUDE" | awk 'NR <= 50' | while IFS= read -r f; do
+_NESTED_CLAUDE=()
+while IFS= read -r -d '' f; do
+  path_has_controls "$f" && continue
+  f=$(canonical_health_file "$f" || true)
+  [ -n "$f" ] || continue
+  _NESTED_CLAUDE+=("$f")
+done < <(find "$P" -maxdepth 4 -type f -name "CLAUDE.md" -not -path "$P/CLAUDE.md" -not -path "*/.git/*" -not -path "*/node_modules/*" -print0 2>/dev/null || true)
+_NESTED_COUNT=${#_NESTED_CLAUDE[@]}
+if [ "$_NESTED_COUNT" -gt 0 ]; then
+  _NESTED_SHOWN=0
+  for f in "${_NESTED_CLAUDE[@]}"; do
+    _NESTED_SHOWN=$((_NESTED_SHOWN + 1))
+    [ "$_NESTED_SHOWN" -le 50 ] || continue
     health_path_label "$f"
   done
   [ "$_NESTED_COUNT" -le 50 ] || echo "nested_claude_listing_truncated: $((_NESTED_COUNT - 50))"
@@ -782,7 +884,7 @@ if [ -n "$_GITIGNORE_HIT" ]; then
       echo "settings.local.json: gitignored"
       ;;
     *)
-      echo "settings.local.json: ignored only by non-project rule ($_GITIGNORE_SOURCE) -- add a repo-local ignore rule"
+      echo "settings.local.json: ignored only by non-project rule ($(safe_health_text "$_GITIGNORE_SOURCE")) -- add a repo-local ignore rule"
       ;;
   esac
 else
@@ -899,17 +1001,18 @@ _PROVENANCE_FOUND=0
 _PROVENANCE_SHOWN=0
 while IFS= read -r DIR; do
   [ -d "$DIR" ] || continue
-  while IFS= read -r link; do
+  while IFS= read -r -d '' link; do
     [ -n "$link" ] || continue
+    path_has_controls "$link" && continue
     _PROVENANCE_FOUND=1
     _PROVENANCE_SHOWN=$((_PROVENANCE_SHOWN + 1))
     [ "$_PROVENANCE_SHOWN" -le 100 ] || continue
     TARGET=$(resolve_symlink "$link" || true)
-    if [ -z "$TARGET" ]; then
-      echo "link=${link##*/} target_scope=unresolved"
+    if [ -z "$TARGET" ] || path_has_controls "$TARGET"; then
+      echo "link=$(safe_health_text "${link##*/}") target_scope=unresolved"
       continue
     fi
-    echo "link=${link##*/} target_scope=$(health_path_label "$TARGET")"
+    echo "link=$(safe_health_text "${link##*/}") target_scope=$(health_path_label "$TARGET")"
     GIT_ROOT=$(git -c core.fsmonitor=false -C "$TARGET" rev-parse --show-toplevel 2>/dev/null || echo "")
     if [ -n "$GIT_ROOT" ]; then
       RAW_REMOTE=$(git -c core.fsmonitor=false -C "$GIT_ROOT" remote get-url origin 2>/dev/null || echo "unknown")
@@ -918,7 +1021,7 @@ while IFS= read -r DIR; do
       COMMIT=$(git -c core.fsmonitor=false -C "$GIT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
       echo "  git_remote=$REMOTE commit=$COMMIT"
     fi
-  done < <(find "$DIR" -maxdepth 1 -type l 2>/dev/null || true)
+  done < <(find "$DIR" -maxdepth 1 -type l -print0 2>/dev/null || true)
 done < <(skill_roots)
 [ "$_PROVENANCE_FOUND" -eq 1 ] || echo "(none)"
 [ "$_PROVENANCE_SHOWN" -le 100 ] || echo "skill_provenance_truncated: $((_PROVENANCE_SHOWN - 100))"

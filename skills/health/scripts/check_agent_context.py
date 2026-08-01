@@ -29,25 +29,132 @@ OPERATIONAL_RULE_RE = re.compile(
     r"(Git Safety|Public Issue Replies|Investigation Honesty|Verification|Response Style|Commit|Security)",
     re.IGNORECASE,
 )
+MAX_FILE_BYTES = 2_000_000
+_AUDIT_ROOT: Optional[Path] = None
+_AUDIT_HOME: Optional[Path] = None
+_TRUSTED_SCRIPT_ROOT = Path(__file__).resolve().parent
+
+
+def contained(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def sensitive_path(path: Path, home: Path) -> bool:
+    for protected in (
+        home / ".ssh",
+        home / ".aws",
+        home / ".gnupg",
+        home / ".config" / "gh",
+    ):
+        if path == protected or contained(path, protected):
+            return True
+    for part in path.parts:
+        lowered = part.lower()
+        if lowered == "secrets":
+            return True
+        if "credential" in lowered:
+            return True
+        if lowered == ".env" or lowered.startswith(".env."):
+            return True
+    return False
+
+
+def audit_scope(path: Path) -> Optional[Path]:
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    for root in (_AUDIT_ROOT, _AUDIT_HOME, _TRUSTED_SCRIPT_ROOT):
+        if root is not None and contained(absolute, root):
+            return root
+    return None
+
+
+def resolve_audit_file(path: Path) -> Optional[Path]:
+    scope = audit_scope(path)
+    if scope is None:
+        return None
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    home = _AUDIT_HOME or Path.home().resolve()
+    if any(ord(char) < 32 or ord(char) == 127 for char in str(absolute)):
+        return None
+    if sensitive_path(absolute, home):
+        return None
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        return None
+    if not contained(resolved, scope) or sensitive_path(resolved, home):
+        return None
+    return resolved if resolved.is_file() else None
+
+
+def resolve_audit_dir(path: Path) -> Optional[Path]:
+    scope = audit_scope(path)
+    if scope is None:
+        return None
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    home = _AUDIT_HOME or Path.home().resolve()
+    if any(ord(char) < 32 or ord(char) == 127 for char in str(absolute)):
+        return None
+    if sensitive_path(absolute, home):
+        return None
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        return None
+    if not contained(resolved, scope) or sensitive_path(resolved, home):
+        return None
+    return resolved if resolved.is_dir() else None
 
 
 def rel(path: Path, root: Path) -> str:
     try:
-        return path.resolve().relative_to(root).as_posix()
+        value = path.resolve().relative_to(root).as_posix()
     except ValueError:
-        return path.as_posix()
+        value = path.as_posix()
+    return safe_label(value)
+
+
+def safe_label(value: str, limit: int = 500) -> str:
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        value = json.dumps(value, ensure_ascii=False)
+    return value if len(value) <= limit else f"{value[: limit - 3]}..."
+
+
+def read_bytes(path: Path, limit: Optional[int] = None) -> bytes:
+    resolved = resolve_audit_file(path)
+    if resolved is None:
+        return b""
+    byte_limit = limit or MAX_FILE_BYTES
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(resolved, flags)
+    except OSError:
+        return b""
+    try:
+        chunks: list[bytes] = []
+        remaining = byte_limit
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+    except OSError:
+        return b""
+    finally:
+        os.close(descriptor)
 
 
 def read(path: Path, limit: Optional[int] = None) -> str:
-    try:
-        data = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-    return data[:limit] if limit else data
+    return read_bytes(path, limit).decode("utf-8", errors="replace")
 
 
 def yes(path: Path) -> str:
-    return "yes" if path.exists() else "no"
+    return "yes" if resolve_audit_file(path) is not None else "no"
 
 
 def print_list(
@@ -62,13 +169,13 @@ def print_list(
         print(f"  {empty}")
         return
     for item in shown:
-        print(f"  {item}")
+        print(f"  {safe_label(item)}")
     if limit is not None and len(items) > limit:
         print(f"  ... {len(items) - limit} more")
 
 
 def load_json(path: Path) -> tuple[Optional[object], Optional[str]]:
-    if not path.is_file():
+    if resolve_audit_file(path) is None:
         return None, None
     try:
         return json.loads(read(path)), None
@@ -82,7 +189,7 @@ def redact_sensitive_entries(value: object, prefix: str = "") -> list[str]:
         for key, child in value.items():
             child_prefix = f"{prefix}.{key}" if prefix else str(key)
             if SENSITIVE_RE.search(str(key)):
-                entries.append(f"{child_prefix}=[REDACTED]")
+                entries.append(f"{safe_label(child_prefix)}=[REDACTED]")
                 continue
             entries.extend(redact_sensitive_entries(child, child_prefix))
     elif isinstance(value, list):
@@ -93,26 +200,42 @@ def redact_sensitive_entries(value: object, prefix: str = "") -> list[str]:
 
 def string_list(value: object) -> list[str]:
     if isinstance(value, list):
-        return [str(item) if not SENSITIVE_RE.search(str(item)) else "[REDACTED]" for item in value]
+        return [
+            safe_label(str(item)) if not SENSITIVE_RE.search(str(item)) else "[REDACTED]"
+            for item in value
+        ]
     if isinstance(value, dict):
-        return sorted(str(key) for key in value)
+        return sorted(safe_label(str(key)) for key in value)
     if isinstance(value, str):
-        return ["[REDACTED]" if SENSITIVE_RE.search(value) else value]
+        return ["[REDACTED]" if SENSITIVE_RE.search(value) else safe_label(value)]
     return []
 
 
 def skill_root_count(path: Path, include_root_md: bool) -> int:
-    if not path.is_dir():
+    directory = resolve_audit_dir(path)
+    if directory is None:
         return 0
-    count = len(list(path.rglob("SKILL.md")))
+    count = sum(
+        1
+        for candidate in directory.rglob("SKILL.md")
+        if resolve_audit_file(candidate) is not None
+    )
     if include_root_md:
-        count += len([p for p in path.glob("*.md") if p.name != "SKILL.md"])
+        count += sum(
+            1
+            for candidate in directory.glob("*.md")
+            if candidate.name != "SKILL.md" and resolve_audit_file(candidate) is not None
+        )
     return count
 
 
 def same_physical_file(left: Path, right: Path) -> bool:
+    left_resolved = resolve_audit_file(left)
+    right_resolved = resolve_audit_file(right)
+    if left_resolved is None or right_resolved is None:
+        return False
     try:
-        return left.samefile(right)
+        return left_resolved.samefile(right_resolved)
     except OSError:
         return False
 
@@ -121,8 +244,11 @@ def unique_physical_files(paths: list[Path]) -> list[Path]:
     unique: list[Path] = []
     seen: set[tuple[int, int]] = set()
     for path in paths:
+        canonical = resolve_audit_file(path)
+        if canonical is None:
+            continue
         try:
-            stat = path.stat()
+            stat = canonical.stat()
         except OSError:
             continue
         identity = (stat.st_dev, stat.st_ino)
@@ -141,9 +267,9 @@ def project_instruction_files(root: Path) -> list[Path]:
         root / "GEMINI.md",
     ]
     instructions_dir = root / ".github" / "instructions"
-    if instructions_dir.is_dir():
+    if resolve_audit_dir(instructions_dir) is not None:
         files.extend(sorted(instructions_dir.glob("*.md")))
-    return unique_physical_files([path for path in files if path.is_file()])
+    return unique_physical_files(files)
 
 
 def claude_delegates_to_agents(path: Path) -> bool:
@@ -202,7 +328,7 @@ def summarize_rule_context(project_rules: Path) -> list[str]:
     scoped_words = 0
     always_files = 0
     always_words = 0
-    if project_rules.is_dir():
+    if resolve_audit_dir(project_rules) is not None:
         for path in unique_physical_files(sorted(project_rules.glob("*.md"))):
             text = read(path)
             words = len(text.split())
@@ -234,7 +360,7 @@ def summarize_rule_context(project_rules: Path) -> list[str]:
     else:
         for selector in ranked[:10]:
             lines.append(
-                f"  selector={selector} files={path_counts[selector]} "
+                f"  selector={safe_label(selector)} files={path_counts[selector]} "
                 f"combined_words={path_words[selector]}"
             )
     return lines
@@ -244,17 +370,17 @@ def skill_name(path: Path) -> str:
     for line in read(path, 8_000).splitlines()[:40]:
         match = re.match(r"^name:\s*[\"']?([^\"']+?)[\"']?\s*$", line.strip())
         if match:
-            return match.group(1).strip()
+            return safe_label(match.group(1).strip())
     return ""
 
 
 def display_path(path: Path, root: Path, home: Path) -> str:
     for base, prefix in ((root, "project:/"), (home, "~/")):
         try:
-            return prefix + path.relative_to(base).as_posix()
+            return safe_label(prefix + path.relative_to(base).as_posix())
         except ValueError:
             continue
-    return path.as_posix()
+    return safe_label(path.as_posix())
 
 
 def candidate_skill_files(root: Path, home: Path) -> list[Path]:
@@ -269,7 +395,7 @@ def candidate_skill_files(root: Path, home: Path) -> list[Path]:
     candidates: list[Path] = []
     repository_roots: set[Path] = set()
     for skill_root in roots:
-        if not skill_root.is_dir():
+        if resolve_audit_dir(skill_root) is None:
             continue
         candidates.extend(skill_root.glob("*/SKILL.md"))
         for child in skill_root.iterdir():
@@ -279,17 +405,19 @@ def candidate_skill_files(root: Path, home: Path) -> list[Path]:
                 resolved = child.resolve(strict=True)
             except OSError:
                 continue
-            if (resolved / "skills").is_dir() or (resolved / "plugins").is_dir():
+            if resolve_audit_dir(resolved) is None:
+                continue
+            if (
+                resolve_audit_dir(resolved / "skills") is not None
+                or resolve_audit_dir(resolved / "plugins") is not None
+            ):
                 repository_roots.add(resolved)
     for repository in repository_roots:
         candidates.extend(repository.glob("skills/*/SKILL.md"))
     unique: dict[Path, Path] = {}
     for path in candidates:
-        if not path.is_file():
-            continue
-        try:
-            canonical = path.resolve(strict=True)
-        except OSError:
+        canonical = resolve_audit_file(path)
+        if canonical is None:
             continue
         unique[canonical] = path
     return sorted(unique)
@@ -302,7 +430,10 @@ def summarize_skill_duplicates(root: Path, home: Path) -> tuple[str, list[str]]:
         if not name:
             continue
         try:
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            raw = read_bytes(path)
+            if not raw:
+                continue
+            digest = hashlib.sha256(raw).hexdigest()
         except OSError:
             continue
         by_name[name].append((path, digest))
@@ -333,7 +464,7 @@ def parse_codex_config(
     plugins: list[str] = []
     marketplaces: list[str] = []
     redacted: list[str] = []
-    if not path.is_file():
+    if resolve_audit_file(path) is None:
         return projects, features, plugins, marketplaces, redacted
 
     section = ""
@@ -446,11 +577,7 @@ def resolve_command_path(token: str, home: Path, project_root: Path) -> Path | N
         candidate = Path(token)
         if not candidate.is_absolute():
             candidate = project_root / candidate
-    try:
-        resolved = candidate.resolve(strict=True)
-    except OSError:
-        return None
-    return resolved if resolved.is_file() else None
+    return resolve_audit_file(candidate)
 
 
 def resolve_hook_handler(command: str, home: Path, project_root: Path) -> Path | None:
@@ -494,10 +621,9 @@ def resolve_hook_handler(command: str, home: Path, project_root: Path) -> Path |
 
 def hook_handler_enforces_pipe_block(path: Path) -> bool:
     canonical = Path(__file__).with_name("block-pipe-to-shell.py")
-    try:
-        return path.read_bytes() == canonical.read_bytes()
-    except OSError:
-        return False
+    candidate_bytes = read_bytes(path)
+    canonical_bytes = read_bytes(canonical)
+    return bool(candidate_bytes) and candidate_bytes == canonical_bytes
 
 
 def has_pretool_bash_hook(
@@ -645,7 +771,7 @@ def summarize_claude_permissions(
         for target in normalized_rule_targets(combined_allow, "Read")
     )
     credential_floor = all(categories.values())
-    settings_surface_present = any(path.is_file() for _label, path in sources)
+    settings_surface_present = any(yes(path) == "yes" for _label, path in sources)
     findings: list[str] = list(errors)
     if settings_surface_present and not credential_floor:
         findings.append(
@@ -686,7 +812,7 @@ def summarize_claude_permissions(
 def project_trust(projects: dict[str, str], root: Path) -> str:
     root_text = root.as_posix()
     if root_text in projects:
-        return f"exact:{projects[root_text] or 'configured'}"
+        return f"exact:{safe_label(projects[root_text] or 'configured')}"
     candidates = []
     for project, level in projects.items():
         try:
@@ -694,7 +820,7 @@ def project_trust(projects: dict[str, str], root: Path) -> str:
         except OSError:
             continue
         if project_path == root:
-            return f"exact:{level or 'configured'}"
+            return f"exact:{safe_label(level or 'configured')}"
         try:
             root.relative_to(project_path)
         except ValueError:
@@ -704,7 +830,7 @@ def project_trust(projects: dict[str, str], root: Path) -> str:
         )
     if candidates:
         _, level, project = sorted(candidates, reverse=True)[0]
-        return f"inherited:{level} from {project}"
+        return f"inherited:{safe_label(level)} from {safe_label(project)}"
     return "missing"
 
 
@@ -762,8 +888,8 @@ def summarize_pi_surface(root: Path, home: Path) -> tuple[str, list[str]]:
     ]
 
     has_pi_surface = (
-        global_settings.is_file()
-        or project_settings.is_file()
+        yes(global_settings) == "yes"
+        or yes(project_settings) == "yes"
         or bool(package_pi_skills)
         or any(not line.endswith(": 0") for line in skill_counts)
         or bool(configured_skills)
@@ -795,6 +921,7 @@ def summarize_pi_surface(root: Path, home: Path) -> tuple[str, list[str]]:
 
 
 def main() -> int:
+    global _AUDIT_ROOT, _AUDIT_HOME
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", nargs="?", default=".", help="Repo root (default: cwd)")
     parser.add_argument(
@@ -804,28 +931,31 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(args.root).resolve()
     mode = args.mode
-    home = Path(os.environ.get("HOME", str(Path.home()))).expanduser()
+    home = Path(os.environ.get("HOME", str(Path.home()))).expanduser().resolve()
+    _AUDIT_ROOT = root
+    _AUDIT_HOME = home
 
     if not root.is_dir():
-        print(f"Repo root not found: {root}", file=sys.stderr)
+        print(f"Repo root not found: {safe_label(root.as_posix())}", file=sys.stderr)
         return 2
 
     instruction_files = project_instruction_files(root)
     agents = root / "AGENTS.md"
     claude = root / "CLAUDE.md"
     claude_aliases_agents = (
-        agents.is_file() and claude.is_file() and same_physical_file(agents, claude)
+        yes(agents) == "yes" and yes(claude) == "yes" and same_physical_file(agents, claude)
     )
     claude_delegates = claude_aliases_agents or claude_delegates_to_agents(claude)
     github_instructions_dir = root / ".github" / "instructions"
     github_instruction_count = (
-        len(list(github_instructions_dir.glob("*.md"))) if github_instructions_dir.is_dir() else 0
+        len(unique_physical_files(list(github_instructions_dir.glob("*.md"))))
+        if resolve_audit_dir(github_instructions_dir) is not None else 0
     )
 
     instruction_findings: list[str] = []
     if not instruction_files:
         instruction_findings.append("no project agent instruction files")
-    if agents.is_file() and claude.is_file() and not claude_delegates:
+    if yes(agents) == "yes" and yes(claude) == "yes" and not claude_delegates:
         claude_lines = len(read(claude).splitlines())
         agents_lines = len(read(agents).splitlines())
         if claude_lines > 20 and agents_lines > 20:
@@ -836,11 +966,11 @@ def main() -> int:
     global_codex_agents = home / ".codex" / "AGENTS.md"
     codex_config = home / ".codex" / "config.toml"
     projects, features, plugins, marketplaces, redacted = parse_codex_config(codex_config)
-    trust = project_trust(projects, root) if codex_config.is_file() else "unavailable"
+    trust = project_trust(projects, root) if yes(codex_config) == "yes" else "unavailable"
     codex_findings: list[str] = []
-    if not global_codex_agents.is_file() and not codex_config.is_file():
+    if yes(global_codex_agents) == "no" and yes(codex_config) == "no":
         codex_findings.append("Codex surface not found")
-    elif codex_config.is_file() and trust == "missing":
+    elif yes(codex_config) == "yes" and trust == "missing":
         codex_findings.append("current project is not configured in Codex trust table")
 
     global_claude = home / ".claude" / "CLAUDE.md"
@@ -851,24 +981,24 @@ def main() -> int:
     project_skills = root / ".claude" / "skills"
     global_skills = home / ".claude" / "skills"
     claude_findings: list[str] = []
-    if claude.is_file() and claude_delegates:
+    if yes(claude) == "yes" and claude_delegates:
         if claude_aliases_agents:
             claude_findings.append("CLAUDE.md resolves to the same physical file as AGENTS.md")
         else:
             claude_findings.append("CLAUDE.md delegates to AGENTS.md")
-    if not global_claude.is_file() and not claude.is_file():
+    if yes(global_claude) == "no" and yes(claude) == "no":
         claude_findings.append("Claude instruction surface not found")
 
     if (
-        global_claude.is_file()
+        yes(global_claude) == "yes"
         and has_operational_rules(global_claude)
-        and global_codex_agents.is_file()
+        and yes(global_codex_agents) == "yes"
         and looks_identity_only(global_codex_agents)
     ):
         codex_findings.append(
             "global Codex AGENTS.md has identity/memory context but lacks operational rules present in global Claude CLAUDE.md"
         )
-    codex_config_text = read(codex_config) if codex_config.is_file() else ""
+    codex_config_text = read(codex_config) if yes(codex_config) == "yes" else ""
     if (
         'sandbox_mode = "danger-full-access"' in codex_config_text
         and 'approval_policy = "never"' in codex_config_text
@@ -885,7 +1015,7 @@ def main() -> int:
     duplicate_status, duplicate_lines = summarize_skill_duplicates(root, home)
 
     conflict_findings: list[str] = []
-    if agents.is_file() and claude.is_file() and not claude_delegates:
+    if yes(agents) == "yes" and yes(claude) == "yes" and not claude_delegates:
         conflict_findings.append("AGENTS.md and CLAUDE.md both exist; verify they do not diverge")
 
     instruction_status = "FAIL" if not instruction_files else ("WARN" if instruction_findings else "PASS")
@@ -931,26 +1061,30 @@ def main() -> int:
     print(f"project_claude_md: {yes(claude)}")
     print(f"shared_settings_json: {yes(shared_project_settings)}")
     print(f"settings_local_json: {yes(local_project_settings)}")
-    rule_count = len(list(project_rules.glob('*.md'))) if project_rules.is_dir() else 0
-    local_skill_count = len(list(project_skills.glob('*/SKILL.md'))) if project_skills.is_dir() else 0
-    global_skill_count = len(list(global_skills.glob('*/SKILL.md'))) if global_skills.is_dir() else 0
+    rule_count = len(unique_physical_files(list(project_rules.glob("*.md"))))
+    local_skill_count = len(
+        unique_physical_files(list(project_skills.glob("*/SKILL.md")))
+    )
+    global_skill_count = len(
+        unique_physical_files(list(global_skills.glob("*/SKILL.md")))
+    )
     print(f"project_rules: {rule_count}")
     print(f"project_skills: {local_skill_count}")
     print(f"global_skills: {global_skill_count}")
     print_list("claude_findings", claude_findings)
 
     for line in permission_lines:
-        print(line)
+        print(safe_label(line, 2_000))
 
     for line in summarize_rule_context(project_rules):
-        print(line)
+        print(safe_label(line, 2_000))
 
     for line in duplicate_lines:
-        print(line)
+        print(safe_label(line, 2_000))
 
     _, pi_lines = summarize_pi_surface(root, home)
     for line in pi_lines:
-        print(line)
+        print(safe_label(line, 2_000))
 
     print("=== INSTRUCTION CONFLICTS ===")
     print(f"conflict_status: {conflict_status}")

@@ -191,4 +191,25 @@ grep -q "exceeds the 4096-byte" "$out12" || {
   echo "FAIL: expected bounded-input failure" >&2; cat "$out12" >&2; exit 1;
 }
 
+# Case 13: report-only release evidence must not run a repository-configured
+# fsmonitor hook while checking worktree and tag state.
+fsmonitor=$(make_tmpdir)
+echo "1.2.3" > "$fsmonitor/VERSION"
+git_fixture "$fsmonitor"
+fsmonitor_marker="${fsmonitor}-hook.executed"
+fsmonitor_hook="$fsmonitor/fsmonitor.sh"
+printf '%s\n' \
+  '#!/bin/sh' \
+  "printf executed > '$fsmonitor_marker'" \
+  'exit 0' \
+  > "$fsmonitor_hook"
+chmod +x "$fsmonitor_hook"
+git -C "$fsmonitor" config core.fsmonitor "$fsmonitor_hook"
+out13=$(make_tmpdir)/fsmonitor.txt
+python3 "$GATE" --root "$fsmonitor" > "$out13"
+test ! -e "$fsmonitor_marker" || {
+  echo "FAIL: release gate executed the target repository fsmonitor hook" >&2
+  exit 1
+}
+
 echo "ok: release gate smoke"
