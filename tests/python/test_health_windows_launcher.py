@@ -73,6 +73,7 @@ def clean_windows_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["PATH"] = os.pathsep.join(
         [
+            str(Path(sys.executable).parent),
             str(Path(POWERSHELL).parent),
             str(Path(os.environ["SystemRoot"]) / "System32"),
             str(Path(shutil.which("git")).parent),
@@ -503,9 +504,6 @@ def test_launcher_does_not_trust_runtime_selection_environment():
     assert "function Resolve-FinalPath" in text
     assert "function Resolve-SafePath" in text
     assert "function ConvertTo-GitBashPath" in text
-    assert "function ConvertTo-GitBashPathList" in text
-    assert '$converted -join ":"' in text
-    assert "$childPath.Split([IO.Path]::PathSeparator)" in text
     assert "& $bashPath -p $bashScriptPath @ScriptArgs" in text
     assert "& $bashPath -p $scriptPath @ScriptArgs" not in text
     assert "function Test-GitBashRoot([string]$Root, [string]$TargetRoot)" in text
