@@ -94,7 +94,16 @@ When the project's `AGENTS.md` or the current thread explicitly asks to "commit 
 
 ## Get the Diff
 
-Get the full diff between the current branch and the base branch. If already on the base branch, ask which commits to review.
+Derive the review baseline from the user's words and current repository state. Do not ask for commits when the scope is already inferable:
+
+- **All local or uncommitted changes**: inventory staged, unstaged, and untracked files, plus local commits ahead of the configured upstream. Being on the base branch does not make this scope ambiguous.
+- **PR or branch review**: use the merge base through the reviewed head, then add any dirty files in that checkout as a separate surface.
+- **Since the last release**: use the latest published stable tag through `HEAD`, not the local version field, then add dirty files.
+- **Recent N days or an explicit ref**: resolve that time/ref boundary through `HEAD`, then add dirty files.
+- **Known-good or previous working version**: compare that ref through `HEAD`; route to `/hunt` Bisect Mode only when the regression point itself is unknown.
+- **Whole-project audit**: use Audit Mode rather than pretending one diff is the repository.
+
+Freeze the resolved base, `HEAD`, worktree inventory, generated/distribution surfaces, and delegated scopes before review. Ask one narrow question only when two plausible baselines would materially change the verdict. If review fixes are applied or repository state moves, the old verdict expires: re-read `HEAD`, status, and the full resolved diff before signing off.
 
 ## Scope
 
@@ -108,6 +117,8 @@ Measure the diff and classify depth:
 
 State the depth before proceeding.
 
+Explicit depth language overrides the size thresholds. "All", "全部", "deep", "深入", or "仔细" means whole-scope coverage of the resolved inventory, even when the textual diff is small; it does not permit skipping untracked files, generated mirrors, required artifacts, or pending reviewers.
+
 Static content diffs can stay quick even when they touch several generated files: version strings, dates, release-copy mirrors, sitemap dates, or one-for-one localization copy changes usually need line-by-line readback plus grep consistency, not a specialist fleet. Escalate only when the diff changes logic, generation rules, public distribution behavior, or user-facing semantics beyond the literal text replacement.
 
 ## Did We Build What Was Asked?
@@ -115,6 +126,8 @@ Static content diffs can stay quick even when they touch several generated files
 Before reading code, check scope drift: do the diff and the stated goal match? Label: **on target** / **drift** / **incomplete**.
 
 Also check surgical traceability: every changed file and every new public surface must trace back to the user's stated goal. If a file, dependency, config knob, abstraction, generated artifact, workflow permission, or release behavior cannot be explained in one sentence from the request, label it drift until proven necessary.
+
+For every new public setting, flag, environment variable, command, or service, ask who will change it and why one correct default cannot serve them. If there is no evidenced user split, treat the knob as scope drift and fix the default path instead.
 
 Drift signals (examples, not exhaustive -- any one is enough to label drift):
 - A changed file has no connection to the stated goal
@@ -231,6 +244,8 @@ Before a whole-scope verdict, reconcile a completion ledger for every delegated 
 
 After explicit write authorization, apply `safe_auto` fixes before surfacing the `gated_auto` confirmation block. In report-only mode, do not modify the worktree.
 
+Any fix made during review invalidates the pre-fix verdict. Re-freeze the baseline, re-run the check that exposed the finding, refresh the sibling sweep, and complete the final adversarial pass required by the review depth before declaring ready.
+
 ## Adversarial Pass (Deep only)
 
 "If I were trying to break this system through this specific diff, what would I exploit?" Four angles (see `references/persona-catalog.md`): assumption violation, composition failures, cascade construction, abuse cases. When the agent facility exists, run the four angles as parallel agents, each blind to the others' findings: convergence from independent angles raises confidence, and singleton findings face the same per-finding skeptic verification as specialist claims. Suppress findings below 0.60 confidence.
@@ -274,6 +289,7 @@ Open the final message with the `status` line as plain prose before any table or
 status:           [committed and pushed as <hash> / staged, not committed / released vX.Y.Z / blocked on <what>]
 files changed:    N (+X -Y)
 scope:            on target / drift: [what]
+user-visible delta: none / [entry, UI, copy, behavior added, removed, or changed]
 review depth:     quick / standard / deep
 hard stops:       N found, N fixed, N deferred
 sibling sweep:    N same-shape sites checked, N fixed / none found / not applicable
@@ -285,3 +301,5 @@ verification:     [command] -> pass / fail
 ```
 
 `public actions` lists every outward-facing step the task implied (issue replies, closures, release reactions) with its done or pending state; an external action the user has to ask about was not finished.
+
+For a whole-scope or post-fix verdict, `scope` is backed by the frozen baseline and current inventory, not by the last patch viewed. For a ship action, the status line is incomplete until every currently authorized ledger item is `done`, `not applicable`, or `blocked` with evidence.

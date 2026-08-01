@@ -7,13 +7,13 @@ Activate when the user sends a screenshot or image alongside a complaint ("这�
 **Flow:**
 
 1. Read the screenshot. State the problem in one sentence: what specifically looks wrong (spacing, contrast, alignment, typeface, color, density, hierarchy). Preserve the user's negative label when it is diagnostic; do not translate "丑", "乱", "不清晰", or "怪" into vague "make it modern" language.
-2. Wait for the user to confirm the diagnosis before touching code.
+2. Lock the target before touching code: name the surface, viewport/state, and adjacent surface that will remain unchanged. Ask only when two plausible targets would produce materially different behavior; otherwise act on the strongest screenshot evidence.
 3. If the user provides a reference screenshot, older version, or "this one is good" example, compare current vs. reference and name the visual deltas before choosing a fix.
 4. If the diagnosis is a known UX problem (split-view sync, infinite scroll, virtualised list, sticky header), spend one round surveying how 2-3 mature products in the same category solve it before writing code. Cite what each does. Skip only if the fix is purely cosmetic (color, spacing, copy).
 5. Find the responsible code: grep for the component name or class, read the actual file. Do not rely on memory or assumptions about file location.
 6. Apply the minimal fix. For existing products, try material/opacity, geometry, spacing, typography, or text-fit adjustments before redesigning the surface.
-7. Verify the result in a browser, native app, screenshot tool, or rendered artifact at desktop width and 375px mobile width when applicable. Check long words, localized strings, button labels, and compact states for overflow. If the host cannot render, say that explicitly and hand off the exact view the user should check.
-8. Ask the user to verify in the browser. Do not hand off without this step.
+7. If the complaint says "still" or exposes alignment, sizing, conditional rendering, animation, or shared-component inconsistency, freeze a minimal visual matrix before verification: affected sibling surfaces; desktop and 375px when applicable; default, selected/focused, loading, empty/error, and compact/localized states that the change can reach; and before/during/after plus cold/warm paths for transitions. Derive one shared invariant or token where the same defect repeats instead of tuning screenshots independently.
+8. Verify the matrix in a browser, native app, screenshot tool, or rendered artifact. A final-state screenshot does not prove copy feedback, touch behavior, first paint, or transition stability. If rendering is available, finish the loop yourself and report the checked states. If the host cannot render, say that explicitly and hand off the shortest exact view the user should check.
 
 **Calibration rules:**
 - The user's screenshot is the strongest design brief in the turn. Keep it visible in the reasoning until the fix is done.

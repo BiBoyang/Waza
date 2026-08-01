@@ -97,7 +97,9 @@ Give at least 3 variations across genuinely different dimensions (density, typog
 
 ## Hard Rules
 
-`references/design-reference.md` (already loaded during direction lock) owns the full rules: typography, OKLCH color, motion timings, layout defaults, CSS-pattern bans, accessibility baseline, and complexity matching. They exist to keep the output off the generic default, not to run as a lint pass: when the committed direction genuinely calls for breaking one, break it deliberately and name the tradeoff in the handoff. The accessibility baseline and the CSS-pattern bans stay non-negotiable.
+Always-on bans for every mode: no thick side-border accents, gradient text, default glass cards, reflex purple-to-blue/cyan-on-dark palettes, generic rounded shadow-card grids, modal escapes for ordinary overflow, `transition: all`, or layout-property animation. Before handoff, scan the first viewport for default-prompt tells and remove any that were not an explicit part of the product's direction.
+
+Direction lock loads `references/design-reference.md` for the full rewrites, typography, OKLCH color, motion timings, layout defaults, accessibility baseline, and complexity matching. Screenshot and quick-fix paths use the compact bans above instead of paying for that full reference. These rules keep output off the generic default, not to run as a lint pass: when the committed direction genuinely calls for breaking one, break it deliberately and name the tradeoff in the handoff. The accessibility baseline and CSS-pattern bans stay non-negotiable.
 
 ## Gotchas
 
