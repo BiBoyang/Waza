@@ -4,7 +4,7 @@ For diagrams, architecture illustrations, covers, and social cards produced by g
 
 ## Spec Before Pixels
 
-Write the spec and get it approved before generating anything. Six lines, no more:
+Resolve the spec from the user's prompt, accepted references, and destination before generating anything. Surface it in six lines, no more. Ask once only when any unresolved spec field has two materially different interpretations; do not turn a fully specified request into an approval ceremony.
 
 - **One sentence on what the image says.** Not the topic, the claim. "A terminal tool that cleans a Mac" is a claim; "architecture diagram" is a topic.
 - **Language** of every string in the frame.
