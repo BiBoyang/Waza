@@ -281,9 +281,15 @@ function Resolve-WorkingPython([string]$Candidate, [string]$TargetRoot) {
 
 function Find-Python([string]$TargetRoot) {
     foreach ($name in @("python3.exe", "python.exe")) {
-        $executable = Resolve-WorkingPython $name $TargetRoot
-        if ($executable) {
-            return $executable
+        foreach ($entry in $env:PATH.Split([IO.Path]::PathSeparator)) {
+            $directory = $entry.Trim().Trim('"')
+            if (-not $directory -or -not [IO.Path]::IsPathRooted($directory)) {
+                continue
+            }
+            $executable = Resolve-WorkingPython (Join-Path $directory $name) $TargetRoot
+            if ($executable) {
+                return $executable
+            }
         }
     }
 

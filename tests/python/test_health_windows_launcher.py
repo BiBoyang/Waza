@@ -510,6 +510,7 @@ def test_launcher_does_not_trust_runtime_selection_environment():
     assert "if ($gitRoot -and -not (Test-GitBashRoot $gitRoot $targetRoot))" in text
     assert "function Resolve-WorkingPython([string]$Candidate, [string]$TargetRoot)" in text
     assert "Resolve-Executable $Candidate $TargetRoot" in text
+    assert "$env:PATH.Split([IO.Path]::PathSeparator)" in text
     assert "$matches = @(" in text
     assert "foreach ($match in $matches)" in text
 
