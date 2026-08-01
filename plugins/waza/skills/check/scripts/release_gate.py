@@ -49,7 +49,9 @@ def run_git(root: Path, *args: str) -> tuple[int, str]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return 1, str(exc)
-    return proc.returncode, (proc.stdout or "").strip()
+    # Preserve leading spaces because porcelain status uses them as the index
+    # column. Trimming them turns the first unstaged file into a staged one.
+    return proc.returncode, (proc.stdout or "").rstrip()
 
 
 def block(name: str, lines: list[str], status: str) -> None:

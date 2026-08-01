@@ -53,13 +53,18 @@ grep -q "manifest ahead of stable reachable tag" "$out" || {
 dirty=$(make_tmpdir)
 echo "1.2.3" > "$dirty/VERSION"
 printf '{"name":"fixture","version":"1.2.4"}\n' > "$dirty/package.json"
+echo "base" > "$dirty/tracked.txt"
 git_fixture "$dirty"
 git -C "$dirty" tag v9.0.0
+echo "wip" > "$dirty/tracked.txt"
 echo "wip" > "$dirty/untracked.txt"
 out2=$(make_tmpdir)/dirty.txt
 python3 "$GATE" --root "$dirty" > "$out2"
 assert_block_status "$out2" "WORKTREE STATE" "WARN"
 assert_block_status "$out2" "VERSION FIELD SYNC" "FAIL"
+grep -q '^staged: 0$' "$out2"
+grep -q '^modified: 1$' "$out2"
+grep -q '^untracked: 1$' "$out2"
 grep -q "version fields disagree" "$out2" || {
   echo "FAIL: expected disagree line" >&2; cat "$out2" >&2; exit 1;
 }
