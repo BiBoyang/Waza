@@ -84,7 +84,14 @@ A minimal statusline for Claude Code: context window, 5-hour quota, and 7-day qu
 </div>
 
 ```bash
-curl -sL https://github.com/tw93/Waza/releases/latest/download/setup-statusline.sh | bash
+(
+  set -e
+  WAZA_STATUSLINE_SCRIPT="$(mktemp -t waza-statusline.XXXXXX)"
+  trap 'rm -f "$WAZA_STATUSLINE_SCRIPT"' EXIT
+  curl -fL https://github.com/tw93/Waza/releases/latest/download/setup-statusline.sh -o "$WAZA_STATUSLINE_SCRIPT"
+  # review it first: less "$WAZA_STATUSLINE_SCRIPT"
+  bash "$WAZA_STATUSLINE_SCRIPT"
+)
 ```
 
 **Codex** has native statusline items. Add to `~/.codex/config.toml`:
@@ -102,14 +109,22 @@ Codex shows remaining quota; the Claude Code statusline above shows used percent
 Three independent toggles. Copy the ones you want (swap `claude-code` for `codex` or `antigravity-cli` on those agents):
 
 ```bash
-# English coaching: appends a short 😇 correction when your prompt has an English mistake
-curl -sL https://github.com/tw93/Waza/releases/latest/download/setup-rule.sh | bash -s -- english claude-code
+(
+  set -e
+  WAZA_RULE_SCRIPT="$(mktemp -t waza-rule.XXXXXX)"
+  trap 'rm -f "$WAZA_RULE_SCRIPT"' EXIT
+  curl -fL https://github.com/tw93/Waza/releases/latest/download/setup-rule.sh -o "$WAZA_RULE_SCRIPT"
+  # review it first: less "$WAZA_RULE_SCRIPT"
 
-# Anti-patterns: always-on cross-skill guardrails (read before acting, no scope creep, no unsolicited summaries)
-curl -sL https://github.com/tw93/Waza/releases/latest/download/setup-rule.sh | bash -s -- anti-patterns claude-code
+  # English coaching: appends a short 😇 correction when your prompt has an English mistake
+  bash "$WAZA_RULE_SCRIPT" english claude-code
 
-# Routing hint: tells non-Claude hosts to prefer Waza skills when a request matches their triggers
-curl -sL https://github.com/tw93/Waza/releases/latest/download/setup-rule.sh | bash -s -- waza-routing claude-code
+  # Anti-patterns: always-on cross-skill guardrails (read before acting, no scope creep, no unsolicited summaries)
+  bash "$WAZA_RULE_SCRIPT" anti-patterns claude-code
+
+  # Routing hint: tells non-Claude hosts to prefer Waza skills when a request matches their triggers
+  bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
+)
 ```
 
 <div align="center">

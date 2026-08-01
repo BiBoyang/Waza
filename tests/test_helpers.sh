@@ -84,6 +84,7 @@ prepare_codex_installer_bin() {
   ln -s /bin/mkdir "$bin_dir/mkdir"
   ln -s "$(command -v mktemp)" "$bin_dir/mktemp"
   ln -s /bin/rm "$bin_dir/rm"
+  ln -s /bin/mv "$bin_dir/mv"
   ln -s "$(command -v tr)" "$bin_dir/tr"
   ln -s "$(command -v awk)" "$bin_dir/awk"
 }

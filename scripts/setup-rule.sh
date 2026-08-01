@@ -57,10 +57,25 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+download_rule_atomically() {
+  local destination="$1" temporary status
+  temporary="$(mktemp "${destination}.tmp.XXXXXX")" || return 1
+  curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$temporary" || {
+    status=$?
+    rm -f "$temporary"
+    return "$status"
+  }
+  mv -f "$temporary" "$destination" || {
+    status=$?
+    rm -f "$temporary"
+    return "$status"
+  }
+}
+
 case "$TARGET" in
   claude-code|claude)
     mkdir -p "$HOME/.claude/rules"
-    curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$HOME/.claude/rules/${RULE}.md"
+    download_rule_atomically "$HOME/.claude/rules/${RULE}.md"
     echo "Waza ${MARKER_LABEL} installed for Claude Code."
     ;;
 
@@ -75,22 +90,25 @@ case "$TARGET" in
     trap 'rm -f "$tmp"' EXIT
     curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$tmp"
 
-    # Inline Python: this script is installed via `curl | bash` (no companion
-    # .py file on the user's machine), so the AGENTS.md edit logic stays self-
+    # Inline Python: this standalone download has no companion .py file on the
+    # user's machine, so the AGENTS.md edit logic stays self-
     # contained here. py_compile cannot syntax-check it; bash -n catches
     # quoting bugs in the shell layer.
     MARKER_LABEL="$MARKER_LABEL" python3 - "$tmp" "$HOME/.codex/AGENTS.md" <<'PYEOF'
 import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
 label = os.environ["MARKER_LABEL"]
 source = Path(sys.argv[1]).read_text().strip()
 target = Path(sys.argv[2])
+destination = target.resolve(strict=True) if target.is_symlink() else target
 start = f"<!-- Waza {label}: start -->"
 end = f"<!-- Waza {label}: end -->"
 block = f"{start}\n{source}\n{end}\n"
-text = target.read_text() if target.exists() else ""
+text = destination.read_text() if destination.exists() else ""
 
 if start in text and end in text:
     before = text.split(start, 1)[0].rstrip()
@@ -99,14 +117,28 @@ if start in text and end in text:
 else:
     text = text.rstrip() + "\n\n" + block
 
-target.write_text(text)
+mode = stat.S_IMODE(destination.stat().st_mode) if destination.exists() else 0o644
+descriptor, temporary_name = tempfile.mkstemp(
+    prefix=f".{destination.name}.", dir=destination.parent
+)
+temporary = Path(temporary_name)
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(temporary, mode)
+    os.replace(temporary, destination)
+except BaseException:
+    temporary.unlink(missing_ok=True)
+    raise
 PYEOF
     echo "Waza ${MARKER_LABEL} installed for Codex."
     ;;
 
   antigravity-cli|antigravity|agy)
     mkdir -p "$HOME/.gemini/antigravity-cli/rules"
-    curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$HOME/.gemini/antigravity-cli/rules/${RULE}.md"
+    download_rule_atomically "$HOME/.gemini/antigravity-cli/rules/${RULE}.md"
     echo "Waza ${MARKER_LABEL} installed for Antigravity."
     ;;
 
