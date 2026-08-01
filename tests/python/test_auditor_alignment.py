@@ -9,6 +9,8 @@ status semantics are per-product calibration and intentionally not compared.
 """
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -17,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 def load_module(name: str, rel_path: str):
     spec = importlib.util.spec_from_file_location(name, ROOT / rel_path)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -24,6 +27,12 @@ def load_module(name: str, rel_path: str):
 audit = load_module("waza_audit_signals", "skills/check/scripts/audit_signals.py")
 maint = load_module(
     "waza_check_maintainability", "skills/health/scripts/check_maintainability.py"
+)
+conversation = load_module(
+    "waza_conversation_audit", "skills/health/scripts/conversation_audit.py"
+)
+skill_security = load_module(
+    "waza_scan_skill_security", "skills/health/scripts/scan_skill_security.py"
 )
 
 
@@ -59,3 +68,31 @@ def test_marker_regex_preserves_lowercase_detection():
 def test_minified_filter_aligned():
     assert audit.MINIFIED_RE.pattern == maint.MINIFIED_RE.pattern
     assert audit.MINIFIED_RE.flags == maint.MINIFIED_RE.flags
+
+
+def test_emitted_evidence_redaction_patterns_aligned():
+    for name in (
+        "SECRET_RE",
+        "SECRET_ASSIGNMENT_RE",
+        "ABS_PATH_RE",
+        "TILDE_PATH_RE",
+        "WINDOWS_ABS_PATH_RE",
+    ):
+        conversation_pattern = getattr(conversation, name)
+        skill_pattern = getattr(skill_security, name)
+        assert conversation_pattern.pattern == skill_pattern.pattern
+        assert conversation_pattern.flags == skill_pattern.flags
+
+
+def test_auditors_preserve_git_filenames_with_unicode_and_newlines(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    names = ("中文.md", "line\nbreak.py")
+    expected = {tmp_path / name for name in names}
+    for path in expected:
+        path.write_text("# TODO\n", encoding="utf-8")
+
+    audit_files = set(audit.iter_files(tmp_path))
+    maintainability_files = set(maint.iter_files(tmp_path))
+
+    assert expected <= audit_files
+    assert expected <= maintainability_files
