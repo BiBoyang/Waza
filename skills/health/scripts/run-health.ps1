@@ -73,6 +73,33 @@ function Resolve-FinalPath([string]$Candidate) {
     }
 }
 
+function ConvertTo-GitBashPath([string]$Candidate) {
+    if (-not $Candidate) {
+        return $null
+    }
+    try {
+        $fullPath = [IO.Path]::GetFullPath($Candidate)
+    } catch {
+        return $null
+    }
+    if ($fullPath.StartsWith("\\")) {
+        return "//" + $fullPath.TrimStart([char]'\').Replace('\', '/')
+    }
+    if (
+        $fullPath.Length -ge 2 -and
+        $fullPath[1] -eq ':' -and
+        [char]::IsLetter($fullPath[0])
+    ) {
+        $drive = [char]::ToLowerInvariant($fullPath[0])
+        $tail = $fullPath.Substring(2).Replace('\', '/').TrimStart('/')
+        if ($tail) {
+            return "/$drive/$tail"
+        }
+        return "/$drive"
+    }
+    return $fullPath.Replace('\', '/')
+}
+
 function Resolve-SafePath([string]$Candidate, [string]$TargetRoot) {
     if (-not $Candidate -or $Candidate.StartsWith("\\")) {
         return $null
@@ -402,5 +429,15 @@ if ($isWindowsHost) {
 
 $env:PATH = $childPath
 
-& $bashPath -p $scriptPath @ScriptArgs
+$bashScriptPath = if ($isWindowsHost) {
+    ConvertTo-GitBashPath $scriptPath
+} else {
+    $scriptPath
+}
+if (-not $bashScriptPath) {
+    [Console]::Error.WriteLine("Health could not translate its runtime script path for Git Bash.")
+    exit 1
+}
+
+& $bashPath -p $bashScriptPath @ScriptArgs
 exit $LASTEXITCODE

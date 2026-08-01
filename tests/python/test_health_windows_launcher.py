@@ -470,6 +470,9 @@ def test_launcher_does_not_trust_runtime_selection_environment():
     assert "--version" in text
     assert "function Resolve-FinalPath" in text
     assert "function Resolve-SafePath" in text
+    assert "function ConvertTo-GitBashPath" in text
+    assert "& $bashPath -p $bashScriptPath @ScriptArgs" in text
+    assert "& $bashPath -p $scriptPath @ScriptArgs" not in text
     assert "function Test-GitBashRoot([string]$Root, [string]$TargetRoot)" in text
     assert "if ($gitRoot -and -not (Test-GitBashRoot $gitRoot $targetRoot))" in text
     assert "function Resolve-WorkingPython([string]$Candidate, [string]$TargetRoot)" in text
