@@ -194,4 +194,41 @@ p.write_text('\n'.join(f'export const item{i} = {i};' for i in range(1300)) + '\
 bash "$CHECKER" "$untracked" summary >"$tmpdir/untracked.out"
 grep -q 'src/new_hotspot.ts' "$tmpdir/untracked.out"
 
+# Case 10: site-root links are routes, not local filesystem references.
+routes="$tmpdir/routes"
+mkdir -p "$routes"
+write_standard_agents_md "$routes/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$routes/Makefile"
+printf '%s\n' 'See [中文博客](/zh/blog/example).' > "$routes/README.md"
+bash "$CHECKER" "$routes" deep >"$tmpdir/routes.out"
+grep -q '^markdown_link_status: PASS$' "$tmpdir/routes.out"
+
+# Case 11: large test fixtures are verification evidence, not production
+# ownership hotspots; a documented subsystem directory owns its source files.
+hotspot_dir="$tmpdir/hotspot-dir"
+mkdir -p "$hotspot_dir/src/updaters" "$hotspot_dir/tests"
+printf '%s\n' \
+  '## Project' \
+  'Repository Map: src contains runtime code.' \
+  '## Verification' \
+  'Run `make test` before handoff.' \
+  '## Boundaries' \
+  'Do not rewrite unrelated modules.' \
+  '## Hotspot Ownership' \
+  '- `src/updaters/`: owns update execution boundaries. Run `make test` after changes.' \
+  > "$hotspot_dir/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$hotspot_dir/Makefile"
+ROOT_HD="$hotspot_dir" python3 -c "
+import os
+from pathlib import Path
+root = Path(os.environ['ROOT_HD'])
+(root / 'src/updaters/large.ts').write_text('\\n'.join('export const x = 1;' for _ in range(900)) + '\\n')
+(root / 'tests/large_test.ts').write_text('\\n'.join('assert(true);' for _ in range(900)) + '\\n')
+"
+bash "$CHECKER" "$hotspot_dir" deep >"$tmpdir/hotspot-dir.out"
+grep -q '^hotspot_ownership_status: PASS$' "$tmpdir/hotspot-dir.out"
+if grep -q 'tests/large_test.ts.*reason=' "$tmpdir/hotspot-dir.out"; then
+  echo "large test files should not require production hotspot ownership"; exit 1
+fi
+
 echo "maintainability smoke: ok"
