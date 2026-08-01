@@ -100,6 +100,17 @@ function ConvertTo-GitBashPath([string]$Candidate) {
     return $fullPath.Replace('\', '/')
 }
 
+function ConvertTo-GitBashPathList([string[]]$Candidates) {
+    $converted = @()
+    foreach ($candidate in $Candidates) {
+        $path = ConvertTo-GitBashPath $candidate
+        if ($path) {
+            $converted += $path
+        }
+    }
+    return ($converted -join ":")
+}
+
 function Resolve-SafePath([string]$Candidate, [string]$TargetRoot) {
     if (-not $Candidate -or $Candidate.StartsWith("\\")) {
         return $null
@@ -418,7 +429,13 @@ if ($isWindowsHost) {
     if ($pythonPath) {
         $pythonPaths += (Split-Path -Parent $pythonPath)
     }
-    $childPath = (@($pythonPaths) + @($runtimePaths) + @($env:PATH)) -join [IO.Path]::PathSeparator
+    $inheritedPaths = @()
+    if ($childPath) {
+        $inheritedPaths = @($childPath.Split([IO.Path]::PathSeparator))
+    }
+    $childPath = ConvertTo-GitBashPathList (
+        @($pythonPaths) + @($runtimePaths) + @($inheritedPaths)
+    )
 } else {
     $bashPath = Resolve-Executable "bash" $targetRoot
     if (-not $bashPath) {
