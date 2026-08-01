@@ -7,18 +7,102 @@ smoke tests; here we keep the unit layer tight.
 
 import pytest
 
+from markdown_fragments import github_heading_inventory
 from skill_checks import (
     check_anti_patterns_contract,
     check_codex_marketplace,
     check_codex_plugin,
     check_context_classifier_literals,
     check_description_conformance,
+    check_markdown_links,
     check_no_automatic_update_checks,
     check_outcome_contract,
     check_portable_skill_surface,
     check_trigger_overlap,
     pipe_count,
 )
+
+
+# ---- check_markdown_links -------------------------------------------------
+
+
+def test_github_heading_inventory_handles_rendered_markdown_and_collisions():
+    markdown = """
+# [Install](https://example.com)
+
+<code>API</code> Guide
+----------------------
+
+# Foo
+# Foo
+# Foo-1
+
+> # Quoted heading
+
+# <https://example.com>
+
+Multi
+line
+heading
+===
+
+```text
+```still code
+# Not a heading
+```
+
+```text
+> ```
+# Also not a heading
+```
+"""
+
+    anchors, base_counts = github_heading_inventory(markdown)
+
+    assert anchors == {
+        "install",
+        "api-guide",
+        "foo",
+        "foo-1",
+        "foo-1-1",
+        "quoted-heading",
+        "httpsexamplecom",
+        "multilineheading",
+    }
+    assert base_counts["foo"] == 2
+    assert "not-a-heading" not in anchors
+    assert "also-not-a-heading" not in anchors
+
+
+def test_markdown_links_accepts_existing_fragment(tmp_path, capsys):
+    guide = tmp_path / "guide.md"
+    guide.write_text("# Existing heading\n\n[Jump](#existing-heading)\n")
+
+    check_markdown_links(tmp_path, [guide])
+
+    assert "ok: markdown links guide.md" in capsys.readouterr().out
+
+
+def test_markdown_links_rejects_missing_fragment(tmp_path, capsys):
+    guide = tmp_path / "guide.md"
+    target = tmp_path / "target.md"
+    guide.write_text("[Jump](target.md#missing-heading)\n")
+    target.write_text("# Existing heading\n")
+
+    with pytest.raises(SystemExit):
+        check_markdown_links(tmp_path, [guide, target])
+
+    assert "BROKEN MARKDOWN FRAGMENT" in capsys.readouterr().err
+
+
+def test_markdown_links_rejects_fragment_found_only_inside_fence(tmp_path, capsys):
+    guide = tmp_path / "guide.md"
+    guide.write_text("```text\n# Not a heading\n```\n\n[Jump](#not-a-heading)\n")
+
+    with pytest.raises(SystemExit):
+        check_markdown_links(tmp_path, [guide])
+
+    assert "BROKEN MARKDOWN FRAGMENT" in capsys.readouterr().err
 
 
 # ---- check_no_automatic_update_checks ------------------------------------

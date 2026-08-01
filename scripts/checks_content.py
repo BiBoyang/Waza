@@ -9,7 +9,9 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
+from markdown_fragments import github_heading_inventory
 from skill_frontmatter import fail, parse_frontmatter, parse_when_to_use_keywords
 
 
@@ -373,13 +375,20 @@ def check_markdown_links(root: Path, all_md: list[Path]):
                 continue
             for m in LINK_RE.finditer(line):
                 raw = m.group(1).strip()
-                if not raw or raw.startswith(("#", "/")):
+                if not raw or raw.startswith("/"):
                     continue
                 if raw.startswith(URL_PREFIXES) or "://" in raw:
                     continue
-                target = raw.split("#", 1)[0].split("?", 1)[0]
-                if target and not (path.parent / target).resolve().exists():
+                target_raw, _, fragment = raw.partition("#")
+                target = target_raw.split("?", 1)[0]
+                target_path = path if not target else (path.parent / target).resolve()
+                if not target_path.exists():
                     fail(f"BROKEN MARKDOWN LINK: {path}:{lineno} -> {raw}")
+                if fragment and target_path.is_file() and target_path.suffix.lower() == ".md":
+                    fragments, _ = github_heading_inventory(target_path.read_text())
+                    decoded_fragment = unquote(fragment)
+                    if decoded_fragment not in fragments:
+                        fail(f"BROKEN MARKDOWN FRAGMENT: {path}:{lineno} -> {raw}")
         print(f"ok: markdown links {path.relative_to(root)}")
 
 # Unescaped | in data cells breaks GitHub rendering (#35).

@@ -57,7 +57,7 @@ plain references/guide.md
 def test_validate_stage_accepts_closed_markdown_and_backtick_paths(tmp_path):
     stage = tmp_path / "stage"
     (stage / "skills/demo/references").mkdir(parents=True)
-    (stage / "skills/demo/references/guide.md").write_text("fixture\n")
+    (stage / "skills/demo/references/guide.md").write_text("# Usage\n\nfixture\n")
     (stage / "SKILL.md").write_text(
         f"{NINJA}\n"
         "# SKILL: demo\n"
@@ -370,6 +370,48 @@ def test_validate_stage_rejects_missing_basename_markdown_link(tmp_path):
 
     assert any(
         "SKILL.md:3: missing Markdown link target: missing.md" in error
+        for error in errors
+    )
+
+
+def test_validate_stage_rejects_missing_markdown_fragment(tmp_path):
+    stage = tmp_path / "stage"
+    reference = stage / "skills/demo/references/guide.md"
+    reference.parent.mkdir(parents=True)
+    reference.write_text("# Existing heading\n")
+    (stage / "SKILL.md").write_text(
+        f"{NINJA}\n"
+        "# SKILL: demo\n"
+        "[guide](skills/demo/references/guide.md#missing-heading)\n"
+    )
+
+    errors = vp.validate_stage(stage, ["demo"])
+
+    assert any(
+        "SKILL.md:3: missing Markdown fragment: "
+        "skills/demo/references/guide.md#missing-heading" in error
+        for error in errors
+    )
+
+
+def test_validate_stage_rejects_cross_skill_inlined_fragment(tmp_path):
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    (stage / "SKILL.md").write_text(
+        f"{NINJA}\n"
+        "# SKILL: alpha\n"
+        "## Hard Rules\n"
+        "# SKILL: beta\n"
+        "[own rules](#hard-rules)\n"
+        "## Hard Rules\n"
+    )
+
+    errors = vp.validate_stage(stage, ["alpha", "beta"])
+
+    assert any(
+        "SKILL.md:5: cross-skill same-document Markdown fragment: "
+        "#hard-rules targets alpha"
+        in error
         for error in errors
     )
 

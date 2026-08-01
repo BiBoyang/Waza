@@ -17,6 +17,7 @@ import sys
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
+from markdown_fragments import github_heading_inventory, github_heading_records
 
 # Derived from the repo's skills/ tree so a renamed or added skill is expected
 # automatically; validate_package runs from the repo checkout at build time.
@@ -39,6 +40,13 @@ def _split_reference_suffix(reference: str) -> tuple[str, str]:
         return reference, ""
     split_at = min(positions)
     return reference[:split_at], reference[split_at:]
+
+
+def _reference_fragment(reference: str) -> str:
+    _, suffix = _split_reference_suffix(reference)
+    if "#" not in suffix:
+        return ""
+    return unquote(suffix.split("#", 1)[1])
 
 
 def _reference_parts(reference: str) -> tuple[str, tuple[str, ...]] | None:
@@ -291,6 +299,8 @@ def validate_stage(stage: Path, expected_skills: list[str] | None = None) -> lis
     for markdown in sorted(stage.rglob("*.md")):
         source = markdown.relative_to(stage).as_posix()
         source_text = markdown.read_text()
+        source_fragments, _ = github_heading_inventory(source_text)
+        source_fragment_lines = dict(github_heading_records(source_text))
         source_parts = PurePosixPath(source).parts
         source_skill = ""
         source_relative = Path(source)
@@ -306,6 +316,27 @@ def validate_stage(stage: Path, expected_skills: list[str] | None = None) -> lis
             if source == "SKILL.md"
             else {}
         )
+        for match in MARKDOWN_LINK_RE.finditer(source_text):
+            destination = match.group("destination")
+            if destination.startswith("<") and destination.endswith(">"):
+                destination = destination[1:-1]
+            if not destination.startswith("#"):
+                continue
+            fragment = unquote(destination[1:])
+            line = source_text.count("\n", 0, match.start()) + 1
+            if fragment not in source_fragments:
+                errors.append(
+                    f"{source}:{line}: missing same-document Markdown fragment: "
+                    f"{destination}"
+                )
+            elif source == "SKILL.md":
+                link_skill = root_contexts.get(line, "")
+                target_skill = root_contexts.get(source_fragment_lines[fragment], "")
+                if link_skill != target_skill:
+                    errors.append(
+                        f"{source}:{line}: cross-skill same-document Markdown "
+                        f"fragment: {destination} targets {target_skill or 'dispatcher'}"
+                    )
         for reference, syntax, line in iter_runtime_references(source_text):
             kind = _reference_kind(reference)
             skill = source_skill or root_contexts.get(line, "")
@@ -357,6 +388,19 @@ def validate_stage(stage: Path, expected_skills: list[str] | None = None) -> lis
                 errors.append(
                     f"{source}:{line}: missing {syntax} target: {reference}"
                 )
+                continue
+            fragment = _reference_fragment(reference)
+            if (
+                syntax == "Markdown link"
+                and fragment
+                and target.is_file()
+                and target.suffix.lower() == ".md"
+            ):
+                target_fragments, _ = github_heading_inventory(target.read_text())
+                if fragment not in target_fragments:
+                    errors.append(
+                        f"{source}:{line}: missing Markdown fragment: {reference}"
+                    )
 
     return errors
 
