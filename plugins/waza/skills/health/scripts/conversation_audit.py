@@ -128,7 +128,7 @@ SECRET_RE = re.compile(
 SECRET_ASSIGNMENT_RE = re.compile(
     r"(?P<name>\b(?:authorization|password|passwd|pwd|token|secret|api[_-]?key)\b)"
     r"(?P<separator>\s*[:=]\s*)"
-    r"(?:Bearer\s+|Basic\s+)?(?:[\"'][^\"'\r\n]+[\"']|[^\s,;]+)",
+    r"(?:Bearer\s+|Basic\s+)?(?:\"[^\"\r\n]*(?:\"|(?=\r?\n|\Z))|'[^'\r\n]*(?:'|(?=\r?\n|\Z))|[^\s,;]+)",
     re.IGNORECASE,
 )
 PRIVATE_KEY_RE = re.compile(

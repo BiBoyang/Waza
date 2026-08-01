@@ -135,9 +135,9 @@ limit = 131072
 raw = sys.stdin.buffer.read(limit + 1)
 truncated = len(raw) > limit
 text = raw[:limit].decode("utf-8", errors="replace")
-text = re.sub(r"-----BEGIN [^-\r\n]+-----.*?-----END [^-\r\n]+-----", "[REDACTED PRIVATE KEY]", text, flags=re.I | re.S)
+text = re.sub(r"-----BEGIN [^-\r\n]+-----.*?(?:-----END [^-\r\n]+-----|\Z)", "[REDACTED PRIVATE KEY]", text, flags=re.I | re.S)
 text = re.sub(r"\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b", "[REDACTED]", text)
-text = re.sub(r"(?P<name>\b(?:authorization|password|passwd|pwd|token|secret|api[_-]?key)\b)(?P<separator>\s*[:=]\s*)(?:Bearer\s+|Basic\s+)?[^\s,;]+", lambda m: m.group("name") + m.group("separator") + "[REDACTED]", text, flags=re.I)
+text = re.sub(r"(?P<name>\b(?:authorization|password|passwd|pwd|token|secret|api[_-]?key)\b)(?P<separator>\s*[:=]\s*)(?:Bearer\s+|Basic\s+)?(?:\"[^\"\r\n]*(?:\"|(?=\r?\n|\Z))|\x27[^\x27\r\n]*(?:\x27|(?=\r?\n|\Z))|[^\s,;]+)", lambda m: m.group("name") + m.group("separator") + "[REDACTED]", text, flags=re.I)
 text = re.sub(r"(?<![A-Za-z0-9_])(?:~[/\\]|/(?:Users|home|private|tmp|var|etc|opt|Volumes)/)[^\s`\"\x27<>]+", "[PATH]", text)
 text = re.sub(r"(?<![A-Za-z0-9_])(?:[A-Za-z]:\\|\\\\)[^\s`\"\x27<>]+", "[PATH]", text)
 text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", text)
@@ -213,7 +213,7 @@ count_ci_workflows() {
 
 count_local_skills() {
   local count=0
-  count=$(for dir in "$P/.claude/skills" "$P/.agents/skills"; do
+  count=$(for dir in "$P/.claude/skills" "$P/.agents/skills" "$P/.codex/skills"; do
     [ -d "$dir" ] || continue
     list_skill_files "$dir"
   done | while IFS= read -r f; do
@@ -431,6 +431,7 @@ direct_skill_roots() {
   printf '%s\n' \
     "$P/.claude/skills" \
     "$P/.agents/skills" \
+    "$P/.codex/skills" \
     "$HOME/.claude/skills" \
     "$HOME/.agents/skills" \
     "$HOME/.codex/skills"
@@ -522,7 +523,7 @@ print_skill_root_coverage() {
     done < <(find "$dir" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true)
   done < <(direct_skill_roots)
   plugin_candidates=$(codex_plugin_candidate_skill_roots | wc -l | tr -d ' ')
-  echo "direct_skill_roots_declared: 5"
+  echo "direct_skill_roots_declared: 6"
   echo "direct_skill_roots_present: $direct_present"
   echo "codex_plugin_candidate_roots_scanned: ${plugin_candidates:-0}"
   echo "codex_plugin_activation_status: unknown"

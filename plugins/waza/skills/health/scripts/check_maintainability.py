@@ -332,7 +332,6 @@ def hotspot_ownership_surface(
         while len(parent.parts) >= 2:
             candidates.append(parent.as_posix().lower().rstrip("/") + "/")
             parent = parent.parent
-        candidates.append(relative_path.name.lower())
         indices: list[int] = []
         for candidate in candidates:
             start = 0

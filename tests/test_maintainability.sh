@@ -231,4 +231,29 @@ if grep -q 'tests/large_test.ts.*reason=' "$tmpdir/hotspot-dir.out"; then
   echo "large test files should not require production hotspot ownership"; exit 1
 fi
 
+# Case 12: a same-basename entry for another directory must not claim
+# ownership of an unrelated hotspot.
+hotspot_collision="$tmpdir/hotspot-collision"
+mkdir -p "$hotspot_collision/src" "$hotspot_collision/tools"
+printf '%s\n' \
+  '## Project' \
+  'Repository Map: src and tools contain separate runtime modules.' \
+  '## Verification' \
+  'Run `make test` before handoff.' \
+  '## Boundaries' \
+  'Do not treat same-basename files as the same module.' \
+  '## Hotspot Ownership' \
+  '- `tools/main.py`: owned tooling hotspot. Run `make test` after changes.' \
+  > "$hotspot_collision/AGENTS.md"
+printf 'test:\n\t@echo test\n' > "$hotspot_collision/Makefile"
+ROOT_HC="$hotspot_collision" python3 -c "
+import os
+from pathlib import Path
+p = Path(os.environ['ROOT_HC']) / 'src/main.py'
+p.write_text('\\n'.join(f'item_{i} = {i}' for i in range(900)) + '\\n')
+"
+bash "$CHECKER" "$hotspot_collision" deep >"$tmpdir/hotspot-collision.out"
+grep -q '^hotspot_ownership_status: WARN$' "$tmpdir/hotspot-collision.out"
+grep -q 'src/main.py.*reason=not mentioned in agent instructions' "$tmpdir/hotspot-collision.out"
+
 echo "maintainability smoke: ok"

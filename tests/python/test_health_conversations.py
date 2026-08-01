@@ -233,6 +233,7 @@ def test_emitted_signals_and_extracts_redact_credentials_and_windows_paths(
         "password=hunter2 C:\\Users\\name\\project\\secret.txt "
         "\\\\server\\share\\private.txt ~/private/config "
         "/Volumes/Backup/private.txt "
+        "secret=\"QUOTED-SECRET-HEAD QUOTED-SECRET-TAIL\n"
         "-----BEGIN OPENSSH PRIVATE KEY-----\n"
         "openssh-private-material\n"
         "-----END OPENSSH PRIVATE KEY-----\n"
@@ -249,6 +250,8 @@ def test_emitted_signals_and_extracts_redact_credentials_and_windows_paths(
         fake_slack_token,
         "supersecrettokenvalue",
         "hunter2",
+        "QUOTED-SECRET-HEAD",
+        "QUOTED-SECRET-TAIL",
         "C:\\Users\\name\\project\\secret.txt",
         "\\\\server\\share\\private.txt",
         "~/private/config",

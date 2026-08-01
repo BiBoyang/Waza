@@ -99,6 +99,26 @@ if grep -q 'SENSITIVE-SKILL-CONTENT-MUST-NOT-LEAK' "$tmpdir/remote.out"; then
   echo "sensitive skill content leaked into health output"; exit 1
 fi
 
+# Project-local Codex skills are a direct skill root, just like project-local
+# Claude and Agents skills. They must appear in counts, inventory, and scans.
+project_codex_repo="$tmpdir/project-codex-skills"
+mkdir -p "$project_codex_repo/.codex/skills/local-health"
+printf '%s\n' \
+  '---' \
+  'name: local-health' \
+  'description: project-local Codex skill fixture' \
+  '---' \
+  'Safe project-local instructions.' \
+  > "$project_codex_repo/.codex/skills/local-health/SKILL.md"
+(
+  cd "$project_codex_repo"
+  HOME="$tmpdir" bash "$ROOT/skills/health/scripts/collect-data.sh" auto deep \
+    > "$tmpdir/project-codex-skills.out"
+)
+grep -q '^skills:        1$' "$tmpdir/project-codex-skills.out"
+grep -q '^direct_skill_roots_declared: 6$' "$tmpdir/project-codex-skills.out"
+grep -q 'path=project:/.codex/skills/local-health/SKILL.md ' "$tmpdir/project-codex-skills.out"
+
 # Deep collection summarizes settings, handoff, and memory rather than echoing
 # their contents. Instruction text included for review is redacted first.
 sensitive_repo="$tmpdir/sensitive-project"
@@ -119,6 +139,10 @@ printf '%s\n' \
   '-----BEGIN OPENSSH PRIVATE KEY-----' \
   'PRIVATE-KEY-MATERIAL-MUST-NOT-LEAK' \
   '-----END OPENSSH PRIVATE KEY-----' \
+  'password = "QUOTED-SECRET-MUST-NOT-LEAK QUOTED-SECRET-TAIL-MUST-NOT-LEAK"' \
+  'secret = "UNCLOSED-SECRET-MUST-NOT-LEAK UNCLOSED-SECRET-TAIL-MUST-NOT-LEAK' \
+  '-----BEGIN TEST PRIVATE KEY-----' \
+  'PARTIAL-PRIVATE-KEY-MUST-NOT-LEAK' \
   > "$sensitive_repo/CLAUDE.md"
 (
   cd "$sensitive_repo"
@@ -136,6 +160,11 @@ for leaked in \
   MEMORY-TOKEN-MUST-NOT-LEAK \
   CLAUDE-TOKEN-MUST-NOT-LEAK \
   PRIVATE-KEY-MATERIAL-MUST-NOT-LEAK \
+  QUOTED-SECRET-MUST-NOT-LEAK \
+  QUOTED-SECRET-TAIL-MUST-NOT-LEAK \
+  UNCLOSED-SECRET-MUST-NOT-LEAK \
+  UNCLOSED-SECRET-TAIL-MUST-NOT-LEAK \
+  PARTIAL-PRIVATE-KEY-MUST-NOT-LEAK \
   /Users/private/hooks/secret.sh \
   /Users/private/handoff/path \
   /Volumes/Private/memory/path \
