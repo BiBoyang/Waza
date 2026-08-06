@@ -41,6 +41,26 @@ fi
 
 mkdir -p "$CLAUDE_DIR"
 
+download_statusline_atomically() {
+  local temporary status
+  temporary="$(mktemp "${DEST}.tmp.XXXXXX")" || return 1
+  curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$temporary" || {
+    status=$?
+    rm -f "$temporary"
+    return "$status"
+  }
+  chmod +x "$temporary" || {
+    status=$?
+    rm -f "$temporary"
+    return "$status"
+  }
+  mv -f "$temporary" "$DEST" || {
+    status=$?
+    rm -f "$temporary"
+    return "$status"
+  }
+}
+
 # Refuse to modify an invalid settings file. Overwriting it would drop unrelated keys.
 if [ -f "$SETTINGS_FILE" ]; then
   SETTINGS_FILE="$SETTINGS_FILE" python3 - <<'PYEOF'
@@ -97,9 +117,8 @@ if [ -n "$EXISTING" ]; then
   fi
 fi
 
-# Download statusline script (after any confirmation prompt)
-curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$DEST"
-chmod +x "$DEST"
+# Download statusline script (after any confirmation prompt).
+download_statusline_atomically
 
 # Write statusLine into ~/.claude/settings.json
 SETTINGS_FILE="$SETTINGS_FILE" python3 - <<'PYEOF'
