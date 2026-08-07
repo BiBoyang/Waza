@@ -78,13 +78,9 @@ CURL
 # mkdir, mktemp, rm, plus tr/awk for the Title Case marker fallback) symlinked
 # from the real environment. Returns the bin_dir path.
 prepare_codex_installer_bin() {
-  local bin_dir="$1"
+  local bin_dir="$1" name
   mkdir -p "$bin_dir"
-  ln -s "$(command -v python3)" "$bin_dir/python3"
-  ln -s /bin/mkdir "$bin_dir/mkdir"
-  ln -s "$(command -v mktemp)" "$bin_dir/mktemp"
-  ln -s /bin/rm "$bin_dir/rm"
-  ln -s /bin/mv "$bin_dir/mv"
-  ln -s "$(command -v tr)" "$bin_dir/tr"
-  ln -s "$(command -v awk)" "$bin_dir/awk"
+  for name in python3 mkdir mktemp rm mv tr awk; do
+    ln -s "$(command -v "$name")" "$bin_dir/$name"
+  done
 }

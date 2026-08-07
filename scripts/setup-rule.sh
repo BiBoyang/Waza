@@ -57,25 +57,38 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+# A download that dies partway must not touch the installed rule, so stage it
+# into a sibling temp file and swap that in only once it is complete. The trap
+# covers what a return cannot: Ctrl-C or a kill mid-curl.
+STAGED_DOWNLOAD=""
+cleanup_staged_download() {
+  if [ -n "$STAGED_DOWNLOAD" ]; then
+    rm -f "$STAGED_DOWNLOAD"
+  fi
+  return 0
+}
+trap cleanup_staged_download EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+download_failed() {
+  echo "Error: could not fetch $RAW (exit $1)." >&2
+  echo "Existing Waza files were left untouched." >&2
+  exit "$1"
+}
+
 download_rule_atomically() {
-  local destination="$1" temporary status
-  temporary="$(mktemp "${destination}.tmp.XXXXXX")" || return 1
-  curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$temporary" || {
-    status=$?
-    rm -f "$temporary"
-    return "$status"
-  }
-  mv -f "$temporary" "$destination" || {
-    status=$?
-    rm -f "$temporary"
-    return "$status"
-  }
+  local destination="$1"
+  STAGED_DOWNLOAD="$(mktemp "${destination}.tmp.XXXXXX")" || return 1
+  curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$STAGED_DOWNLOAD" || return
+  mv -f "$STAGED_DOWNLOAD" "$destination" || return
+  STAGED_DOWNLOAD=""
 }
 
 case "$TARGET" in
   claude-code|claude)
     mkdir -p "$HOME/.claude/rules"
-    download_rule_atomically "$HOME/.claude/rules/${RULE}.md"
+    download_rule_atomically "$HOME/.claude/rules/${RULE}.md" || download_failed $?
     echo "Waza ${MARKER_LABEL} installed for Claude Code."
     ;;
 
@@ -86,15 +99,14 @@ case "$TARGET" in
     fi
 
     mkdir -p "$HOME/.codex"
-    tmp="$(mktemp)"
-    trap 'rm -f "$tmp"' EXIT
-    curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$tmp"
+    STAGED_DOWNLOAD="$(mktemp)"
+    curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$STAGED_DOWNLOAD" || download_failed $?
 
     # Inline Python: this standalone download has no companion .py file on the
     # user's machine, so the AGENTS.md edit logic stays self-
     # contained here. py_compile cannot syntax-check it; bash -n catches
     # quoting bugs in the shell layer.
-    MARKER_LABEL="$MARKER_LABEL" python3 - "$tmp" "$HOME/.codex/AGENTS.md" <<'PYEOF'
+    MARKER_LABEL="$MARKER_LABEL" python3 - "$STAGED_DOWNLOAD" "$HOME/.codex/AGENTS.md" <<'PYEOF'
 import os
 import stat
 import sys
@@ -138,7 +150,7 @@ PYEOF
 
   antigravity-cli|antigravity|agy)
     mkdir -p "$HOME/.gemini/antigravity-cli/rules"
-    download_rule_atomically "$HOME/.gemini/antigravity-cli/rules/${RULE}.md"
+    download_rule_atomically "$HOME/.gemini/antigravity-cli/rules/${RULE}.md" || download_failed $?
     echo "Waza ${MARKER_LABEL} installed for Antigravity."
     ;;
 

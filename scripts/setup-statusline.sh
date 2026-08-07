@@ -41,24 +41,32 @@ fi
 
 mkdir -p "$CLAUDE_DIR"
 
+# A download that dies partway must not touch the installed script, so stage it
+# into a sibling temp file and swap that in only once it is complete and
+# executable. The trap covers what a return cannot: Ctrl-C or a kill mid-curl.
+STAGED_DOWNLOAD=""
+cleanup_staged_download() {
+  if [ -n "$STAGED_DOWNLOAD" ]; then
+    rm -f "$STAGED_DOWNLOAD"
+  fi
+  return 0
+}
+trap cleanup_staged_download EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+download_failed() {
+  echo "Error: could not fetch $RAW (exit $1)." >&2
+  echo "$DEST was left untouched." >&2
+  exit "$1"
+}
+
 download_statusline_atomically() {
-  local temporary status
-  temporary="$(mktemp "${DEST}.tmp.XXXXXX")" || return 1
-  curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$temporary" || {
-    status=$?
-    rm -f "$temporary"
-    return "$status"
-  }
-  chmod +x "$temporary" || {
-    status=$?
-    rm -f "$temporary"
-    return "$status"
-  }
-  mv -f "$temporary" "$DEST" || {
-    status=$?
-    rm -f "$temporary"
-    return "$status"
-  }
+  STAGED_DOWNLOAD="$(mktemp "${DEST}.tmp.XXXXXX")" || return 1
+  curl -fsSL --connect-timeout 10 --max-time 60 "$RAW" -o "$STAGED_DOWNLOAD" || return
+  chmod +x "$STAGED_DOWNLOAD" || return
+  mv -f "$STAGED_DOWNLOAD" "$DEST" || return
+  STAGED_DOWNLOAD=""
 }
 
 # Refuse to modify an invalid settings file. Overwriting it would drop unrelated keys.
@@ -118,7 +126,7 @@ if [ -n "$EXISTING" ]; then
 fi
 
 # Download statusline script (after any confirmation prompt).
-download_statusline_atomically
+download_statusline_atomically || download_failed $?
 
 # Write statusLine into ~/.claude/settings.json
 SETTINGS_FILE="$SETTINGS_FILE" python3 - <<'PYEOF'
