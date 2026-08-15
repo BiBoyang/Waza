@@ -33,6 +33,11 @@ printf '%s\n' '{"type":"user","message":{"content":"active session placeholder"}
 touch -t 202001010101 "$convo_dir/2-old.jsonl"
 
 HOME="$tmpdir" bash "$ROOT/skills/health/scripts/collect-data.sh" auto > "$tmpdir/health.out"
+grep -q '^=== PROJECT SIGNALS ===$' "$tmpdir/health.out"
+grep -q '^audit_hint: auto$' "$tmpdir/health.out"
+if grep -qE '^=== TIER METRICS ===$|^detected_tier:' "$tmpdir/health.out"; then
+  echo "collector must not derive requirements from repository counts"; exit 1
+fi
 grep -q '^=== CONVERSATION SIGNALS ===$' "$tmpdir/health.out"
 grep -q '^=== AGENT CONFIG SUMMARY ===$' "$tmpdir/health.out"
 grep -q '^=== AI MAINTAINABILITY SUMMARY ===$' "$tmpdir/health.out"
@@ -95,6 +100,10 @@ ln -s "$tmpdir/.ssh" "$tmpdir/.codex/skills/escaped"
 ln -s "$tmpdir/.ssh/SKILL.md" "$tmpdir/.codex/skills/leaf/SKILL.md"
 
 HOME="$tmpdir" bash "$ROOT/skills/health/scripts/collect-data.sh" auto deep > "$tmpdir/remote.out"
+grep -q '^=== SKILL SECURITY SCAN ===$' "$tmpdir/remote.out"
+if grep -q 'skipped: simple tier' "$tmpdir/remote.out"; then
+  echo "deep security scan must not be skipped by repository size"; exit 1
+fi
 grep -q 'git_remote=https://example.invalid/repo.git ' "$tmpdir/remote.out"
 grep -q '^codex_plugin_candidate_roots_scanned: 1$' "$tmpdir/remote.out"
 grep -q '^codex_plugin_activation_status: unknown$' "$tmpdir/remote.out"
