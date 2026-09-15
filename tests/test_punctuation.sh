@@ -389,4 +389,31 @@ if bash "$CHECKER" "$tmpdir/codekana.md" >"$tmpdir/codekana.out" 2>&1; then
 fi
 grep -q 'zh-halfwidth-punct' "$tmpdir/codekana.out"
 
+# 64. A wikilink without a label hides its entire target from prose checks.
+printf '%s\n' '见 [[docs/Python教程]]。' > "$tmpdir/wikilink-target.md"
+bash "$CHECKER" --lang zh "$tmpdir/wikilink-target.md" >"$tmpdir/wikilink-target.out"
+grep -q 'punctuation: ok' "$tmpdir/wikilink-target.out"
+
+# 65. A labeled wikilink hides only the target after the pipe.
+printf '%s\n' '见 [[Python 教程|docs/Python教程]]。' > "$tmpdir/wikilink-labeled.md"
+bash "$CHECKER" --lang zh "$tmpdir/wikilink-labeled.md" >"$tmpdir/wikilink-labeled.out"
+grep -q 'punctuation: ok' "$tmpdir/wikilink-labeled.out"
+
+# 66. A wikilink label stays rendered prose and remains subject to checks.
+printf '%s\n' '见 [[Python教程|docs/python]]。' > "$tmpdir/wikilink-label.md"
+if bash "$CHECKER" --lang zh "$tmpdir/wikilink-label.md" >"$tmpdir/wikilink-label.out"; then
+  echo "wikilink label should remain visible to punctuation checks"; exit 1
+fi
+grep -q 'zh-missing-space' "$tmpdir/wikilink-label.out"
+
+# 67. Multiple wikilinks on one line are masked independently.
+printf '%s\n' '见 [[docs/Python教程]] 与 [[API 文档|docs/API文档]]。' > "$tmpdir/wikilink-multiple.md"
+bash "$CHECKER" --lang zh "$tmpdir/wikilink-multiple.md" >"$tmpdir/wikilink-multiple.out"
+grep -q 'punctuation: ok' "$tmpdir/wikilink-multiple.out"
+
+# 68. Ordinary markdown-link targets keep their existing exemption.
+printf '%s\n' '见 [Python 教程](docs/Python教程)。' > "$tmpdir/md-link-regression.md"
+bash "$CHECKER" --lang zh "$tmpdir/md-link-regression.md" >"$tmpdir/md-link-regression.out"
+grep -q 'punctuation: ok' "$tmpdir/md-link-regression.out"
+
 echo "punctuation smoke: ok"
