@@ -1,0 +1,39 @@
+id: canonical-from-bundle
+title: 典型触发：给定素材包整理一站式参考，模式正确且事实保真
+description: 「一站式参考」触发 Canonical Article 模式；限定只用给定材料、不联网，验证 skill 特征与素材保真度
+
+input:
+  prompt: |
+    当前目录 materials/ 下是我收集的一批关于 SQLite WAL 模式的材料。只用这批材料（不要联网搜集新来源），把它们整理成一份一站式参考，让读者看完这篇就不用再看别的——直接在回复里给出完整内容。
+
+context:
+  files:
+    "materials/official-notes.md": |
+      # SQLite 官方文档摘记：WAL 模式
+
+      - WAL（Write-Ahead Logging）模式自 SQLite 3.7.0（2010 年 7 月）引入。
+      - WAL 的核心并发特性：读操作不阻塞写操作，写操作也不阻塞读操作，读写可以并发进行。
+      - WAL 模式下，新内容先追加到独立的 wal 文件；checkpoint 操作把 wal 文件中的内容写回主数据库文件。
+      - 默认情况下 SQLite 会在 wal 文件达到 1000 页时自动执行 checkpoint（auto-checkpoint），无需手动干预。
+      - 限制：使用同一数据库的所有连接必须在同一台主机上，WAL 不支持网络文件系统（如 NFS）。
+    "materials/builder-post.md": |
+      # 我们在生产环境开启 WAL 的复盘
+
+      我们的服务是一个读多写少的 SQLite 嵌入式应用。开启 WAL 模式后，p99 读延迟从 120ms 降到了 45ms，效果立竿见影。
+
+      但踩过一个坑：有一次一个报表查询跑了将近 20 分钟的长读事务，期间 checkpoint 一直无法完成，wal 文件一路涨到了 4GB，磁盘告警把我们叫醒。
+
+      教训：开了 WAL 之后要监控 wal 文件的大小，并且把长事务拆开，别让单个读事务跑太久。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "回复第一行以 🥷 开头（内联，不作为单独段落）"
+    - "没有因为无法反问模式而停摆：声明了所选模式（一站式参考对应 Canonical Article，或等价说明），并直接产出了完整参考内容"
+    - "关键事实与材料一致且未编造材料外数据：WAL 自 SQLite 3.7.0 引入、读写互不阻塞、checkpoint 默认每 1000 页自动执行、不支持网络文件系统、p99 读延迟 120ms 降到 45ms、长读事务导致 wal 文件涨到 4GB"
+    - "体现一站式参考的覆盖度：除原理外还包含实践经验或常见坑（如监控 wal 文件大小、拆分长事务），并标注了内容出自哪份材料（引用文件名或等价出处说明）"

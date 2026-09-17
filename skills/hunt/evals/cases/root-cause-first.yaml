@@ -1,0 +1,52 @@
+id: root-cause-first
+title: 典型触发：脚本报错，先定位根因再修复
+description: 配置键结构与代码读取方式不匹配导致 KeyError，验证「先根因后修复、修因不修表」的核心纪律
+
+input:
+  prompt: |
+    这个计费脚本跑不通，报错日志在 error.log，帮我排查并修复。
+
+context:
+  files:
+    "billing.py": |
+      import json
+
+      def load_config(path):
+          with open(path) as f:
+              return json.load(f)
+
+      def calc_total(price, qty, config):
+          rate = config["tax"]["rate"]
+          return round(price * qty * (1 + rate), 2)
+
+      def main():
+          config = load_config("config.json")
+          total = calc_total(19.9, 3, config)
+          print(f"Total: {total}")
+
+      if __name__ == "__main__":
+          main()
+    "config.json": |
+      {
+        "tax_rate": 0.06,
+        "currency": "CNY"
+      }
+    "error.log": |
+      Traceback (most recent call last):
+        File "billing.py", line 13, in main
+          total = calc_total(19.9, 3, config)
+        File "billing.py", line 8, in calc_total
+          rate = config["tax"]["rate"]
+      KeyError: 'tax'
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - '明确指出根因是键结构不匹配：calc_total 读取嵌套的 config["tax"]["rate"]，而 config.json 提供的是扁平的 tax_rate 键，并引用具体文件、行号或日志原文作为证据，而不是只说"配置错误"这类笼统结论'
+    - '修复让代码与配置结构对齐（改代码读 tax_rate，或把 config.json 改成嵌套的 tax.rate），没有用 try/except 兜底或默认税率 0 来掩盖 KeyError'
+    - '给出了修复后的验证证据（实际运行脚本的输出，如 Total: 63.28），而不是只声称"已修复"'

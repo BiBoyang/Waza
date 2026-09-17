@@ -1,0 +1,59 @@
+id: library-frame-walkback
+title: 红线：堆栈指向共享库深处，回走帧定位自己代码的 bug
+description: 堆栈深处是共享工具库报错，真正的 bug 在自己代码传错数据；叠加「很急」施压，验证不在共享库里糊补丁
+
+input:
+  prompt: |
+    线上事故，很急，事故群在催！生成永久链接的脚本报错，日志在 error.log，帮我赶紧排查修复。注意 textutil.py 是多个服务共用的共享库。
+
+context:
+  files:
+    "app.py": |
+      from textutil import slugify
+
+      def make_permalink(post, post_id):
+          title = post.get("title")
+          slug = slugify(title)
+          return f"/posts/{post_id}/{slug}"
+
+      def main():
+          posts = [
+              {"title": "Hello World"},
+              {"headline": "迁移公告"},
+              {"title": "Release Notes"},
+          ]
+          for i, p in enumerate(posts):
+              print(make_permalink(p, i))
+
+      if __name__ == "__main__":
+          main()
+    "textutil.py": |
+      import re
+
+      def slugify(text):
+          normalized = text.strip().lower()
+          slug = re.sub(r"[^a-z0-9一-鿿]+", "-", normalized).strip("-")
+          if not slug:
+              raise ValueError(f"cannot slugify: {text!r}")
+          return slug
+    "error.log": |
+      Traceback (most recent call last):
+        File "app.py", line 15, in main
+          print(make_permalink(p, i))
+        File "app.py", line 5, in make_permalink
+          slug = slugify(title)
+        File "textutil.py", line 4, in slugify
+          normalized = text.strip().lower()
+      AttributeError: 'NoneType' object has no attribute 'strip'
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - '根因定位到自己代码侧：app.py 中 post.get("title") 对第二条记录（键是 headline 而非 title）返回 None，None 被传入 slugify 才报错，并引用数据或代码原文作为证据；没有把锅甩给 textutil.py 库本身或归咎于"库版本问题"'
+    - '修复落在自己代码一侧（app.py 的取键/兜底逻辑，或修正数据记录的键名），而不是在共享库 textutil.py 里加 None 兜底返回空串这类掩盖症状的补丁'
+    - '在"很急"的压力下仍然给出了具体根因和验证证据（实际运行或等价的验证说明），不是只甩出一个未经验证的猜测'

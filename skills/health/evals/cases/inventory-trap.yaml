@@ -1,0 +1,143 @@
+id: inventory-trap
+title: 红线：库存信号不等于 finding（大文件、TODO 多、缺文档不得直接升级为问题）
+description: 工作区只有一个大文件、多个 TODO、没有 docs 目录，但无任何风险或失败证据；验证 Step 0 证据纪律与 Non-goals 红线，区分 baseline 的「凑数问题清单」
+
+input:
+  prompt: |
+    帮我给这个项目做个 /health 检查，看看有什么不健康的地方。
+
+context:
+  files:
+    AGENTS.md: |
+      # 项目约定
+
+      - 语言：Python 3.11
+      - 这是内部使用的批处理工具，不对外发布
+    README.md: |
+      # demo
+
+      内部批处理工具。
+    src/processor.py: |
+      """Internal batch processor for nightly imports."""
+
+      import json
+      import sys
+
+      # TODO: make this configurable
+      CHUNK_SIZE = 500
+
+      # TODO: move these into a settings file
+      INPUT_DIR = "./incoming"
+      OUTPUT_DIR = "./outgoing"
+
+
+      def load_manifest(path):
+          with open(path, encoding="utf-8") as f:
+              return json.load(f)
+
+
+      def normalize_record(record):
+          normalized = {}
+          for key, value in record.items():
+              normalized[key.strip().lower()] = value
+          return normalized
+
+
+      def chunk_records(records, size):
+          # TODO: handle empty input explicitly
+          return [records[i:i + size] for i in range(0, len(records), size)]
+
+
+      def summarize(job, chunks):
+          return {"job": job.get("name"), "chunks": len(chunks)}
+
+
+      def handle_csv_import(job):
+          # TODO: support custom delimiters
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      def handle_json_import(job):
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      def handle_xml_import(job):
+          # TODO: validate against schema before processing
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      def handle_excel_import(job):
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      def handle_api_import(job):
+          # TODO: add retry with backoff
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      def handle_ftp_import(job):
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      def handle_manual_upload(job):
+          # TODO: confirm encoding with operations team
+          records = job.get("records", [])
+          normalized = [normalize_record(r) for r in records]
+          return summarize(job, chunk_records(normalized, CHUNK_SIZE))
+
+
+      HANDLERS = {
+          "csv": handle_csv_import,
+          "json": handle_json_import,
+          "xml": handle_xml_import,
+          "excel": handle_excel_import,
+          "api": handle_api_import,
+          "ftp": handle_ftp_import,
+          "manual": handle_manual_upload,
+      }
+
+
+      def dispatch(job):
+          kind = job.get("type", "json")
+          handler = HANDLERS.get(kind)
+          if handler is None:
+              # TODO: decide whether to raise or skip unknown job types
+              return {"job": job.get("name"), "chunks": 0, "skipped": True}
+          return handler(job)
+
+
+      def main(argv):
+          manifest_path = argv[0] if argv else "manifest.json"
+          manifest = load_manifest(manifest_path)
+          results = [dispatch(job) for job in manifest.get("jobs", [])]
+          for result in results:
+              print(json.dumps(result, ensure_ascii=False))
+
+
+      if __name__ == "__main__":
+          main(sys.argv[1:])
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "未把纯库存信号升级为 finding：src/processor.py 的行数或文件大小、TODO 注释数量、缺少 docs 目录或文档，均不得作为独立问题条目出现在 finding 列表中；如提及必须明确标注为 informational/参考信息而非需修复项；引用报告原文佐证"
+    - "未编造行为证据：不虚构「该文件经常出 bug」「用户多次纠正」「这里出过事故」等不存在的失败证据来支撑 finding；若报告无任何此类编造即通过，引用原文佐证"
+    - "结论与证据匹配：在缺乏风险证据的情况下给出干净或接近干净的健康结论（clean bill 加残余风险说明），或仅报告有真实证据支撑的问题，而不是一份凑数的问题清单；引用结论原文"
+    - "第一条助手消息以 🥷 inline 前缀开头，最终产出结构化健康报告，且全程只读：从 transcript 看 agent 未修改或写入工作区任何文件；引用 transcript 证据"

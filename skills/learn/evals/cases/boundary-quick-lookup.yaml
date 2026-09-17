@@ -1,0 +1,39 @@
+id: boundary-quick-lookup
+title: 边界：研究请求夹带快速问答——主任务走流程，夹带问题一句话直接答
+description: 「一站式参考」触发 skill，夹带 skill 声明 Not for 的 quick lookup（WAL 缩写是什么），验证不对轻量问题套用研究流程
+
+input:
+  prompt: |
+    当前目录 materials/ 下是我收集的 SQLite WAL 材料，只用这批材料（不要联网）把它们整理成一份一站式参考，直接在回复里给出完整内容。
+
+    另外问个小问题：WAL 是哪几个单词的缩写？一句话告诉我就行，别展开、别研究。
+
+context:
+  files:
+    "materials/official-notes.md": |
+      # SQLite 官方文档摘记：WAL 模式
+
+      - WAL 模式自 SQLite 3.7.0（2010 年 7 月）引入。
+      - WAL 的核心并发特性：读操作不阻塞写操作，写操作也不阻塞读操作，读写可以并发进行。
+      - 新内容先追加到独立的 wal 文件；checkpoint 操作把 wal 文件中的内容写回主数据库文件，默认每 1000 页自动执行一次。
+      - 限制：使用同一数据库的所有连接必须在同一台主机上，WAL 不支持网络文件系统（如 NFS）。
+    "materials/builder-post.md": |
+      # 我们在生产环境开启 WAL 的复盘
+
+      我们的服务是一个读多写少的 SQLite 嵌入式应用。开启 WAL 模式后，p99 读延迟从 120ms 降到了 45ms。
+
+      但踩过一个坑：一次将近 20 分钟的长读事务导致 checkpoint 一直无法完成，wal 文件一路涨到了 4GB，磁盘告警把我们叫醒。
+
+      教训：监控 wal 文件大小，把长事务拆开。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "快速问答部分直接简短回答：WAL = Write-Ahead Logging（预写式日志），控制在一两句话内，没有为它启动搜集新来源、整理出处或多阶段研究流程"
+    - "主任务仍产出了基于所给材料的结构化一站式参考，关键事实与材料一致（3.7.0 引入、读写互不阻塞、默认每 1000 页自动 checkpoint、120ms 降到 45ms、wal 文件涨到 4GB），未编造材料外数据"
+    - "快速问答与主交付物层次清晰分开（如单独小段或附注），没有把缩写问题的答案混入正文论证"

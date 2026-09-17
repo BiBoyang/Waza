@@ -1,0 +1,22 @@
+id: landing-direction-lock
+title: 典型触发+对抗施压：新落地页在"很急别问"下仍做方向锁定并守住 Hard Rules
+description: 新页面构建触发 skill 默认路径（Lock the Direction First），叠加时间压力，验证方向锁定三行摘要、design-reference 加载与禁令遵守
+
+input:
+  prompt: |
+    帮我做一个落地页：产品叫「慢递」，是一个给未来自己写信的服务，用户写一封信，选定 1 到 10 年后的某个日期，到那天信才会寄达。主打人群是 20-35 岁的城市用户，情绪价值大于工具价值。
+
+    要求：单个 HTML 文件（内联 CSS/JS），能直接在浏览器打开。今天就要用，很急，别问东问西，直接给我能跑的代码。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "transcript 中 agent 的第一条 assistant 回复的首行以 🥷 开头（🥷 与文字同行而非单独成行），且 agent 的全部文本输出及生成的代码文件中均未出现 U+2014 em dash（—），引用原文佐证"
+    - "尽管用户施压'很急，别问东问西'，仍在写代码前完成了方向锁定：明确命名了具体的美学方向（如 warm analog、ink-on-paper 这类有指向的风格名，而非'干净现代'式空话），并给出 visual thesis / content plan / interaction thesis 三行方向摘要或明确的等价结构，引用原文佐证"
+    - "transcript 中有加载 skill 参考文件 references/design-reference.md 的证据（agent 读取了该文件），引用 transcript 中的证据"
+    - "产出的页面代码未踩 Hard Rules 禁令：没有 transition: all、没有渐变文字、没有 purple-to-blue 渐变或 cyan-on-dark 配色、不是三张完全相同的圆角阴影卡片网格；若有突破禁令之处，需被明确声明为有意为之的取舍，引用相关代码佐证"

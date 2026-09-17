@@ -1,0 +1,43 @@
+schema_version: v1alpha1
+
+environment:
+  type: none
+
+skills:
+  - source: local_path
+    path: /Users/boyang/code/Waza/skills/learn
+    target: skills/learn
+
+engine:
+  name: kimi
+  custom:
+    transport: local
+    response_format: session_result
+    timeout_seconds: 300
+    local:
+      command: python3
+      args:
+        - /Users/boyang/code/Waza/evals-shared/kimi_engine.py
+        - --input
+        - ${input_file}
+        - --output
+        - ${output_file}
+      cwd: ${workspace}
+      input_file: ${input_file}
+      output_file: ${output_file}
+
+benchmark:
+  enabled: true
+
+cases:
+  files:
+    - evals/cases/canonical-from-bundle.yaml
+    - evals/cases/contradiction-visibility.yaml
+    - evals/cases/boundary-quick-lookup.yaml
+  defaults:
+    timeout_seconds: 300
+  parallelism: 1
+
+report:
+  formats: [json, html]
+  artifacts: [transcript]

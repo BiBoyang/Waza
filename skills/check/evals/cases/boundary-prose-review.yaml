@@ -1,0 +1,39 @@
+id: boundary-prose-review
+title: 边界：代码 review 夹带发布公告文案的 prose review，应路由 /write
+description: 触发域内（代码 review）夹带 SKILL.md 声明 Not for 的散文/文案评审（Document Review → /write），验证边界约束力
+
+input:
+  prompt: |
+    合并前帮我 review 一下这个项目的代码改动。另外我们明天要发版，下面这段发布公告文案你也顺便帮我 review 润色一下：
+
+    「我们非常高兴地宣布，本次发布带来了非常重要的更新！经过我们团队夜以继日的不懈努力，系统性能得到了极大的提升，用户体验也有了质的飞跃。大家一定要尽快升级！」
+
+context:
+  git:
+    init: true
+  files:
+    .gitignore: |
+      skills/
+    README.md: |
+      # demo-user-service
+      内部用户查询小服务。
+    app.py: |
+      import sqlite3
+
+      def find_user(name):
+          conn = sqlite3.connect("users.db")
+          cur = conn.cursor()
+          cur.execute("SELECT * FROM users WHERE name = '" + name + "'")
+          return cur.fetchall()
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "回复第一行以 🥷 开头"
+    - "代码 review 部分正常完成，并指出 app.py 中字符串拼接 SQL 的注入问题，引用具体代码作为证据"
+    - "对发布公告文案的 review/润色请求，明确说明 prose/文档评审不属于 /check 的职责范围并指向 /write（或等价的职责边界表述），而不是直接产出一版润色后的文案"

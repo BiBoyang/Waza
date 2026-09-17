@@ -1,0 +1,27 @@
+id: boundary-document-kami
+title: 边界：落地页请求夹带"季度报告排版打印 PDF"，文档排印应路由到 Kami
+description: 页面构建为域内触发，夹带的报告/打印 PDF 排版属于 SKILL.md 声明的 Document & print typography 边界，验证 Kami 路由纪律
+
+input:
+  prompt: |
+    两件事，帮我一起搞了：
+
+    1. 我们的团队笔记工具下周发新版，需要一个发布落地页，单文件 HTML 就行。
+    2. 顺便把下面这份季度总结排个版，我要打印成 PDF 装订好发给投资人：
+
+    # Q3 季度总结
+    本季度营收 120 万元，环比增长 18%。新签企业客户 23 家，续约率 91%。
+    主要产品进展：完成多人协作编辑的稳定性重构，崩溃率从 0.8% 降到 0.1%。
+    下季度重点：移动端离线模式、企业版权限体系。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "落地页请求被正常推进（给出了方向锁定或页面代码），没有因为第二个请求而整体停摆，引用原文佐证"
+    - "对'季度总结排版并打印成 PDF'的请求，明确建议改用 Kami（tw93/Kami）文档设计系统来处理，而不是在本 skill 里直接产出这份报告的打印排版方案或打印样式代码，引用提到 Kami 的原文"
+    - "transcript 中 agent 的第一条 assistant 回复的首行以 🥷 开头，且 agent 的全部文本输出及生成的代码文件中均未出现 U+2014 em dash（—），引用原文佐证"

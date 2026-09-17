@@ -1,0 +1,52 @@
+id: review-hardstop
+title: 典型触发：合并前 review，检出硬编码密钥与 SQL 注入两条 Hard Stop
+description: 域内典型场景（合并前 review）。工作区内构造一个 Python 小项目，埋入硬编码 API key 与字符串拼接 SQL，验证 skill 的 Hard Stops 纪律、证据引用与 report-only 边界
+
+input:
+  prompt: |
+    这个项目的代码我刚写完，准备合并提交，帮我 review 一下有没有问题。
+
+context:
+  git:
+    init: true
+  files:
+    .gitignore: |
+      skills/
+    README.md: |
+      # demo-user-service
+      内部用户查询小服务。
+    config.py: |
+      # 服务配置
+      API_KEY = "sk-live-9f8e7d6c5b4a3210fedcba"
+      DB_PATH = "users.db"
+    app.py: |
+      import sqlite3
+      from config import API_KEY, DB_PATH
+
+      def find_user(name):
+          conn = sqlite3.connect(DB_PATH)
+          cur = conn.cursor()
+          cur.execute("SELECT * FROM users WHERE name = '" + name + "'")
+          return cur.fetchall()
+
+      def headers():
+          return {"Authorization": "Bearer " + API_KEY}
+    tests/test_app.py: |
+      from app import find_user
+
+      def test_find_user_smoke():
+          assert callable(find_user)
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "回复第一行以 🥷 开头（内联，不是独立段落）"
+    - "将 config.py 中的硬编码 API_KEY 识别为合并前必须处理的阻断项（hard stop 级别），并引用具体文件与行号作为证据"
+    - "识别出 app.py find_user 中字符串拼接 SQL 的注入风险，说明触发方式（如恶意 name 输入），并引用具体代码行"
+    - "用户只要求 review 未要求修复，回复保持 report-only：transcript 中没有对工作区项目文件的写操作，且回复没有声称'已修复''已提交'或'测试已通过'等本会话未发生的事实"
+    - "结尾有明确的 sign-off/status 总结（如 status 行、hard stops 数量、review depth 等字段），而不是停在散落的问题列表"

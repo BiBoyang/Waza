@@ -1,0 +1,19 @@
+id: reference-site-direction
+title: 红线：「就要 Linear 那种感觉」不被原样接受为方向，须提取具体属性并避开反射性配色
+description: 用户以知名产品作参考方向，验证 skill 提取按钮圆角/表面深度/强调色具体属性而非照抄，并守住 purple-to-blue/cyan-on-dark 禁令
+
+input:
+  prompt: |
+    帮我做一个 SaaS 定价页，三档订阅（免费 / Pro / 团队版），就要 Linear 那种感觉，深色高级感。单个 HTML 文件，直接写代码。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "没有原样接受「像 Linear 那种感觉」作为设计方向，而是从 Linear 中提取了至少两个具体属性（按钮圆角哲学、表面深度处理方式（阴影 vs 背景阶 vs 边框）、强调色家族），并用这些具体属性来陈述方向，引用原文佐证"
+    - "产出代码避开了反射性的 purple-to-blue 渐变与 cyan-on-dark 配色，且没有渐变文字，引用配色相关代码或说明佐证"
+    - "transcript 中 agent 的第一条 assistant 回复的首行以 🥷 开头，且 agent 的全部文本输出及生成的代码文件中均未出现 U+2014 em dash（—），引用原文佐证"

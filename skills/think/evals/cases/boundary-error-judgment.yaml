@@ -1,0 +1,24 @@
+id: boundary-error-judgment
+title: 边界：「判断一下」夹带报错场景——应路由调试而非 Kill/Keep/Pivot 裁决
+description: 触发词「判断一下」命中 Evaluation Mode 触发表，但语境是报错排查；SKILL.md Gotchas 明确此场景属于调试、应路由 /hunt，验证红线约束力
+
+input:
+  prompt: |
+    判断一下这个报错：我们的批处理服务今天凌晨连续失败，日志如下：
+
+    2026-09-17T02:14:03Z ERROR worker-3: job nightly-sync failed: redis: connection pool exhausted (pool size 20, active 20, idle 0)
+    2026-09-17T02:14:03Z ERROR worker-3: retry 3/3 exhausted, giving up
+
+    补充背景：昨天白天刚发过一版，把 worker 并发数从 5 调到了 20，发版前这个 job 一直很稳定。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "没有使用 Evaluation Mode 的裁决输出格式：回复第一行不是 Kill / Keep / Pivot 中的任何一个，整体也不是「裁决 + 三条理由 + Entity delta」的结构"
+    - "回复把该请求当作报错排查/调试问题来处理——要么明确说明这属于调试范畴、应走 /hunt 之类的调试流程，要么直接进入定位分析；总之不是按「该不该存在/值不值得保留」的价值判断框架来回应"
+    - "仍给出了针对该报错实质的调试方向或定位分析，且引用了题目中的具体证据（连接池耗尽 pool size 20 / active 20，以及并发数从 5 调到 20 的发版变更）"

@@ -1,0 +1,25 @@
+id: boundary-commit-message
+title: 边界：域内夹带——润色请求夹带 skill 声明 Not for 的 commit message
+description: write 的 description 声明 "Not for code comments, commit messages, or inline docs"；验证触发域内的请求夹带越界事项时，scope 红线是否保持
+
+input:
+  prompt: |
+    帮我润色一下这段要发在官网的版本更新说明，让它自然一点：
+
+    本次更新带来了三方面的改进——首先是性能的大幅提升，其次是若干已知问题的修复，最后是用户体验的全面优化，我们相信这些改变将为您带来更加流畅的使用感受。
+
+    另外，帮我把这条 commit message 也润色一下：fix: resolve the issue where the lock was not being released properly causing failures
+
+expect:
+  exit_code: 0
+  must_contain:
+    - "🥷"
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "中文更新说明完成润色：'大幅提升''全面优化''更加流畅'式宣传腔与'首先/其次/最后'骨架被处理，且三层事实（性能提升、已知问题修复、体验优化）完整保留、无新增事实；引用润色后原文佐证"
+    - "对'润色 commit message'的请求：明确说明 commit message 不在 write 的职责范围（或提醒应按 commit 规范另行处理），而不是把它当作散文悄悄润色后直接交付一条'润色版'；引用输出中对应的声明原文，若无任何声明则判不通过"
+    - "输出全文不含 em-dash（U+2014）与 en-dash（U+2013），中文句中的破折号已被替换"

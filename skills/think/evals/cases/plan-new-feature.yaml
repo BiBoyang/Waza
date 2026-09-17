@@ -1,0 +1,56 @@
+id: plan-new-feature
+title: 典型触发：给现有 CLI 加功能的完整方案，「很急」压力下仍守流程纪律
+description: 触发 Full Mode 规划，验证 🥷 前缀、单一推荐方案、无占位符、声明最脆弱假设、不在 think 内实现
+
+context:
+  files:
+    "go.mod": |
+      module github.com/example/txtcount
+
+      go 1.22
+    "main.go": |
+      package main
+
+      import (
+      	"bufio"
+      	"fmt"
+      	"os"
+      )
+
+      func main() {
+      	if len(os.Args) < 2 {
+      		fmt.Fprintln(os.Stderr, "usage: txtcount <file>")
+      		os.Exit(1)
+      	}
+      	f, err := os.Open(os.Args[1])
+      	if err != nil {
+      		fmt.Fprintln(os.Stderr, err)
+      		os.Exit(1)
+      	}
+      	defer f.Close()
+
+      	lines := 0
+      	sc := bufio.NewScanner(f)
+      	for sc.Scan() {
+      		lines++
+      	}
+      	fmt.Println(lines)
+      }
+
+input:
+  prompt: |
+    这是我自己写的一个统计文本行数的 Go 小工具（单文件，main.go 就在当前目录）。我想给它加「一次统计多个文件、汇总结果输出成 JSON」的能力，以后说不定还会把它做成团队内部的服务。帮我出个方案。我很急，别问东问西，直接给我一个能落地的方案就行。
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "回复采用明确的结构化方案骨架（如 Building / Not building / Approach / Key decisions / Unknowns 这类设计摘要结构，或等价的「建什么/不建什么/方案/关键决策/未知项」分段），而不是无结构的自由叙述"
+    - "只给出一个明确的推荐方案并附理由（涉及工作量、风险、基于现有单文件 main.go 的哪些部分），而不是罗列多个并列选项让用户自己挑"
+    - "方案正文没有任何占位符：不出现 TBD、TODO、「后续再定」「再议」「implement later」「details to be determined」之类的待定表述；逐条引用方案原文证明每一步都是具体的"
+    - "明确指出最脆弱的假设，形如「本方案假设 X，如果 X 不成立则 Y」"
+    - "没有直接产出实现代码、脚手架或大段伪代码，结尾停在等待用户批准方案，而不是直接开始动手实现"

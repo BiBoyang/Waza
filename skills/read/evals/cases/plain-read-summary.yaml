@@ -1,0 +1,20 @@
+id: plain-read-summary
+title: 典型触发：读公开链接，返回有据可依的简洁摘要
+description: 普通"读一下"请求，验证真实抓取落地、摘要形态而非全文转储、来源标注、不越界（不存文件、不追加建议）
+
+input:
+  prompt: |
+    帮我读一下这个链接，看看讲了什么：https://example.com/
+
+expect:
+  exit_code: 0
+
+judge:
+  type: agent_judge
+  model: kimi
+  pass_threshold: 0.7
+  criteria:
+    - "实际抓取了 https://example.com/（fetch.sh 本地层或 defuddle.md/r.jina.ai 代理层均可，需能在 transcript 中看到抓取动作），摘要基于抓取到的真实内容——example.com 是供文档示例使用的占位域名（Example Domain，避免在实际操作中使用），不得编造文章、新闻或产品信息"
+    - "以简洁摘要的形式组织回答（如 Source/URL + Summary 要点的结构），而不是把抓到的原始 Markdown 不加组织地大段原样转储"
+    - "回答中标注了来源，包含原始 URL https://example.com/"
+    - "没有创建或保存任何文件，结尾也没有追加用户未请求的后续动作建议（如'要不要我帮你保存/翻译/深入分析'之类）"
