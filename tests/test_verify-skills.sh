@@ -142,7 +142,7 @@ python3 -c "
 from pathlib import Path
 p = Path('$tmpdir/repo8/skills/read/SKILL.md')
 t = p.read_text()
-t = t.replace(' Use when users ask in any language to read, fetch, check, summarize, quote, cite, convert, or save a URL or PDF.', '')
+t = t.replace(' Use when asked to read, fetch, quote, cite, convert, or save a URL or PDF.', '')
 p.write_text(t)
 "
 sync_codex_mirror "$tmpdir/repo8"
@@ -158,7 +158,7 @@ python3 -c "
 from pathlib import Path
 p = Path('$tmpdir/repo8b/skills/read/SKILL.md')
 t = p.read_text()
-t = t.replace('Use when users ask in any language to read, fetch, check', 'Use when users ask 读一下, fetch, check')
+t = t.replace('Use when asked to read, fetch, quote', 'Use when asked to 读一下, fetch, quote')
 p.write_text(t)
 "
 sync_codex_mirror "$tmpdir/repo8b"
