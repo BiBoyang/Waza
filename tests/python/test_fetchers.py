@@ -13,6 +13,54 @@ sys.path.insert(0, str(ROOT / "skills" / "read" / "scripts"))
 
 import fetch_feishu  # noqa: E402
 import fetch_weixin  # noqa: E402
+import fetch_local  # noqa: E402
+
+
+def test_fetch_local_bypasses_system_proxy_env(monkeypatch):
+    """The local tier's privacy contract is "the URL never leaves the machine":
+    a system proxy is a third party too, so http_proxy/https_proxy env must be
+    bypassed (urllib would honor them silently via getproxies)."""
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:1")
+
+    captured = {}
+
+    class _FakeResponse:
+        headers = {"Content-Type": "text/html"}
+
+        def read(self):
+            return b"<html></html>"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class _FakeOpener:
+        def open(self, req, timeout):
+            return _FakeResponse()
+
+    real_build_opener = fetch_local.urllib.request.build_opener
+
+    def spy_build_opener(*handlers):
+        for h in handlers:
+            if isinstance(h, fetch_local.urllib.request.ProxyHandler):
+                captured["proxies"] = h.proxies
+        return _FakeOpener()
+
+    monkeypatch.setattr(
+        fetch_local.urllib.request, "build_opener", spy_build_opener
+    )
+    try:
+        fetch_local.fetch_html("https://example.com")
+    finally:
+        monkeypatch.setattr(
+            fetch_local.urllib.request, "build_opener", real_build_opener
+        )
+
+    assert captured.get("proxies") == {}, "local tier must bypass system proxy env"
+
 
 
 def test_feishu_parse_url_variants():
