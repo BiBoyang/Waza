@@ -267,7 +267,7 @@ In a dirty or multi-agent checkout, a passing local build or test run is not pro
 
 ## Document Review
 
-For document, PDF, white paper, or prose review, route to `/write` (Document Review Mode). `/check` handles code diffs and release artifacts only.
+For document, PDF, white paper, or prose review, route to `/write` (Document Review Mode). `/check` handles code diffs and release artifacts only. If `/write` is not installed, say the request belongs to `/write` and stop there instead of taking the prose review.
 
 ## Gotchas
 
