@@ -29,7 +29,7 @@
 | [`/write`](skills/write/SKILL.md) | 文章の執筆や推敲時 | 中国語・英語の文章を自然にリライトし、機械的なAI感を排除 |
 | [`/learn`](skills/learn/SKILL.md) | 未知の分野の調査時 | 収集・要約・構成・執筆・推敲・レビューの6段階で体系的にリサーチ |
 | [`/read`](skills/read/SKILL.md) | WebリンクやPDFの閲覧時 | 要点を簡潔にまとめるか、引用や保存に適したクリーンなMarkdownを出力 |
-| [`/health`](skills/health/SKILL.md) | エージェント設定の監査時 | エージェント設定や指示の乖離を診断し、トークン消費を抑えながら検査 |
+| [`/health`](skills/health/SKILL.md) | エージェント設定の監査時 | Codex、Claude Code、プロジェクト指示、検証出力、AI による保守性をチェックし、トークン消費を抑えた概要から詳細診断へ進む |
 
 ## インストール
 
@@ -161,8 +161,8 @@ rm -f ~/.claude/rules/clarity.md
 
 ## サポート
 
-- 最も直接的な支援方法は、Mac クリーナーアプリ [Mole for Mac](https://mole.fit) の購入です
-- Waza が役に立った場合は、Star を付けたり、[共有](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20AI%20coding%20skills%20for%20the%20complete%20engineer.)したり、Issue や PR を送ったりしていただけるとうれしいです
+- 私が作った有料の Mac クリーナー [Mole for Mac](https://mole.fit) を使っていただくのが、いちばん直接的な支援になります
+- Waza が役に立った場合は、Star を付けたり、[共有](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)したり、Issue や PR を送ったりしていただけるとうれしいです
 - 飼い猫の「湯円（TangYuan）」と「コーラ（Coke）」に <a href="https://cats.tw93.fun?name=Waza" target="_blank">おやつ 🥩</a> をご馳走することもできます
 
 <details>

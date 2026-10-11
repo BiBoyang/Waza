@@ -29,7 +29,7 @@ Jede Entwicklergewohnheit entspricht einem eigenständigen Skill, einem Ordner m
 | [`/write`](skills/write/SKILL.md) | Texte schreiben oder feilen | Formuliert chinesische und englische Texte natürlich um, entfernt hölzernen KI-Ton. |
 | [`/learn`](skills/learn/SKILL.md) | Unbekannte Themen erforschen | Recherche in sechs Phasen: sammeln, verdichten, gliedern, ausarbeiten, überarbeiten, dann selbst prüfen und veröffentlichen. |
 | [`/read`](skills/read/SKILL.md) | Webseiten oder PDFs lesen | Erstellt prägnante Zusammenfassungen oder sauberes Markdown für Zitate und Notizen. |
-| [`/health`](skills/health/SKILL.md) | Agenten-Konfiguration prüfen | Prüft Agenten-Konfiguration und Anweisungs-Drift, zuerst als ressourcenschonende Übersicht, dann im Detail. |
+| [`/health`](skills/health/SKILL.md) | Agenten-Konfiguration prüfen | Prüft Codex, Claude Code, Projektanweisungen, Verifier-Ausgaben und KI-Wartbarkeit, zuerst als ressourcenschonende Übersicht, dann im Detail. |
 
 ## Installation
 
@@ -42,7 +42,7 @@ npx skills add tw93/Waza -a claude-code codex cursor -g -y
 Skills landen zentral in `~/.agents/skills`. Claude Code bindet sie per Symlink ein; Codex, Cursor, Gemini CLI, Copilot, Amp, Kimi Code CLI und alle Agenten, die dieses Verzeichnis nutzen, laden die 8 Skills automatisch. Agenten mit eigenem Skill-Verzeichnis gibst du nach `-a` mit ihrer ID an (zum Beispiel `antigravity-cli` oder `qwen-code`). Aktualisierung über `npx skills update -g -y`. Du kannst deinen Agenten auch direkt mit der Installation beauftragen:
 > Lies https://github.com/tw93/Waza/blob/main/llms.txt und installiere Waza für mich
 
-**Host-Plugin-Methode** (Skills erhalten einen Namespace-Präfix, z. B. `/waza:check`):
+**Host-Plugin-Methode** (Skills erhalten ein Namespace-Präfix, z. B. `/waza:check`):
 
 ```bash
 # Claude Code (Update: claude plugin update waza)
@@ -162,7 +162,7 @@ Für die Statusleiste entfernst du außerdem den Eintrag `statusLine` aus `~/.cl
 ## Unterstützung
 
 - Die direkteste Unterstützung ist der Kauf meiner Mac-Bereinigungs-App [Mole for Mac](https://mole.fit)
-- Wenn dir Waza hilft, freue ich mich über einen Stern, eine [Weiterempfehlung](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20AI%20coding%20skills%20for%20the%20complete%20engineer.) oder ein Issue bzw. einen PR
+- Wenn dir Waza hilft, freue ich mich über einen Stern, eine [Weiterempfehlung](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) oder ein Issue bzw. einen PR
 - Du kannst auch meinen beiden Katzen TangYuan und Coke eine <a href="https://cats.tw93.fun?name=Waza" target="_blank">Dose Futter 🥩</a> spendieren
 
 <details>

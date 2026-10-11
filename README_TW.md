@@ -18,7 +18,7 @@
 
 ## 技能
 
-每個工程習慣對應一個獨立技能，技能目錄裡內建參考文件、輔助腳本以及真實踩坑沉澱的避坑指南，Claude Code 輸入斜線指令即可觸發，Codex 則直接依技能名稱呼叫
+每個工程習慣對應一個獨立技能，技能目錄裡內建參考文件、輔助腳本以及真實踩坑沉澱的避坑指南，Claude Code 輸入斜線指令即可觸發，Codex 則直接依技能名稱呼叫。
 
 | 技能 | 觸發時機 | 它做什麼 |
 | :--- | :--- | :--- |
@@ -26,10 +26,10 @@
 | [`/ui`](skills/ui/SKILL.md) | 建構前端介面 | 產出有明確設計方向的介面，不套預設模板，也能拿截圖反覆迭代視覺 |
 | [`/check`](skills/check/SKILL.md) | 任務完成後，合併或發布前 | 結合專案規範審查改動、驗證結果，並在你授權後處理發布和維護動作 |
 | [`/hunt`](skills/hunt/SKILL.md) | 遇到 Bug 或異常行為 | 動手修之前先查清根本原因，特別是面對以前正常運作的功能 |
-| [`/write`](skills/write/SKILL.md) | 撰寫或修改文案 | 改寫中英文本使其自然流暢，去掉生硬的套話與機器感 |
+| [`/write`](skills/write/SKILL.md) | 撰寫或修改文案 | 把中英文改得自然順口，去掉生硬的套話和機器味 |
 | [`/learn`](skills/learn/SKILL.md) | 探索完全陌生的領域 | 按收集、消化、列提綱、補全、打磨、自審發布六個階段研究，把陌生領域整理成文 |
 | [`/read`](skills/read/SKILL.md) | 閱讀網頁連結或 PDF | 提取精練摘要，或轉成方便引用歸檔的乾淨 Markdown |
-| [`/health`](skills/health/SKILL.md) | 稽核 Agent 設定 | 排查 Agent 設定與指令漂移，先輕量概覽再深入診斷 |
+| [`/health`](skills/health/SKILL.md) | 稽核 Agent 設定 | 檢查 Codex、Claude Code、專案指令、校驗輸出和 AI 可維護性，先輕量概覽再深入診斷 |
 
 ## 安裝
 
@@ -39,7 +39,7 @@
 npx skills add tw93/Waza -a claude-code codex cursor -g -y
 ```
 
-技能統一存放在 `~/.agents/skills` 共享目錄，Claude Code 透過符號連結接入，Codex、Cursor、Gemini CLI、Copilot、Amp、Kimi Code CLI 以及其他能讀取該目錄的 Agent 都會自動載入這 8 個技能。擁有獨立技能目錄的 Agent 可在 `-a` 後指定其 ID，比如 `antigravity-cli` 或 `qwen-code`，後續透過 `npx skills update -g -y` 保持更新。也可以直接告訴你的 Agent 幫你安裝：
+技能統一存放在 `~/.agents/skills` 共享目錄，Claude Code 透過符號連結接入，Codex、Cursor、Gemini CLI、Copilot、Amp、Kimi Code CLI 以及其他能讀這個目錄的 Agent 都會自動載入這 8 個技能。有自己技能目錄的 Agent 在 `-a` 後面寫上它的 ID，比如 `antigravity-cli` 或 `qwen-code`，後續透過 `npx skills update -g -y` 保持更新。也可以直接告訴你的 Agent 幫你安裝：
 > 閱讀 https://github.com/tw93/Waza/blob/main/llms.txt 幫我安裝 Waza
 
 **宿主外掛方式**，如果你更習慣使用宿主自有的更新指令（技能帶有命名空間前綴，如 `/waza:check`）：
@@ -60,7 +60,7 @@ codex plugin add waza@waza
 
 ## 技能串聯
 
-技能串聯由你作主，每個技能跑完既定目標就停下，拿到明確授權後會自動接力完成整套流程，不需要在每個環節反覆確認
+技能串聯由你作主，每個技能跑完既定目標就停下，拿到明確授權後會自動接力完成整套流程，不需要在每個環節反覆確認。
 
 **常見工作流程：**
 
@@ -70,15 +70,15 @@ codex plugin add waza@waza
 
 ## 專案上下文
 
-Waza 只沉澱通用的工程習慣，`/check` 執行時從目標儲存庫公開的 README、套件清單、Makefile、CI 設定和你的任務要求裡提煉約束，絕不讀取私有路徑、憑證或 Token，具體上下文模板可參考 [`skills/check/references/project-context.md`](skills/check/references/project-context.md)
+Waza 只沉澱通用的工程習慣，`/check` 執行時從目標儲存庫公開的 README、套件清單、Makefile、CI 設定和你的任務要求裡提煉約束，絕不讀取私有路徑、憑證或 Token，具體上下文模板可參考 [`skills/check/references/project-context.md`](skills/check/references/project-context.md)。
 
 ## 附加工具與規則
 
-下載腳本預設使用最新的 GitHub Release 資源，想用 main 上最新的腳本，可以在指令前加 `WAZA_REF=main`
+下載腳本預設使用最新的 GitHub Release 資源，想用 main 上最新的腳本，可以在指令前加 `WAZA_REF=main`。
 
 ### 狀態列
 
-Claude Code 極簡狀態列：顯示上下文視窗、5 小時配額與 7 天配額，按用量著色，沒有進度條，沒有視覺噪音
+Claude Code 極簡狀態列：顯示上下文視窗、5 小時配額與 7 天配額，按用量著色，沒有進度條，沒有視覺噪音。
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/tw93/Waza/main/assets/statusline.png" width="1000" />
@@ -103,11 +103,11 @@ status_line = ["model-with-reasoning", "current-dir", "context-used", "five-hour
 status_line_use_colors = true
 ```
 
-Codex 顯示剩餘額度，上方 Claude Code 狀態列顯示已用百分比（上游暫未提供 `five-hour-used` / `weekly-used`）
+Codex 顯示剩餘額度，上方 Claude Code 狀態列顯示已用百分比（上游暫未提供 `five-hour-used` / `weekly-used`）。
 
 ### 選用規則
 
-選用規則用於補充技能之外的長期習慣，寫入 Agent 的持久化指令後生效，只安裝技能預設不會開啟，按需複製執行即可（在對應 Agent 上將 `claude-code` 替換為 `codex` 或 `antigravity-cli`）：
+選用規則用於補充技能之外的長期習慣，寫入 Agent 的持久化指令後生效，只安裝技能預設不會開啟，按需複製執行即可（在對應 Agent 上把 `claude-code` 換成 `codex` 或 `antigravity-cli`）：
 
 ```bash
 (
@@ -140,11 +140,11 @@ Codex 顯示剩餘額度，上方 Claude Code 狀態列顯示已用百分比（�
 
 ## 為什麼做 Waza
 
-Waza（技，わざ）在日本武術裡指招式，是一個動作反覆練到變成本能的那種功夫。好工程師不只是寫程式碼，動手前會反覆推敲需求，排查時會追到根因，提交前會自己過一遍 diff，查資料也會回到第一手來源。這些事 AI 都能做，但沒有結構約束，輸出就會滑向泛泛而談、不夠精確。每個 Waza 技能只寫清要什麼結果、哪些紅線不能碰、結果怎麼驗證，具體路徑交給模型自己選，模型越強，這份克制就越值錢
+Waza（技，わざ）在日本武術裡指招式，是一個動作反覆練到變成本能的那種功夫。好工程師不只是寫程式碼，動手前會反覆推敲需求，排查時會追到根因，提交前會自己過一遍 diff，查資料也會回到第一手來源。這些事 AI 都能做，但沒有結構約束，輸出就會滑向泛泛而談、不夠精確。每個 Waza 技能只寫清要什麼結果、哪些紅線不能碰、結果怎麼驗證，具體路徑交給模型自己選，模型越強，這份克制就越值錢。
 
-Superpowers、gstack 這類工具很強，但也很重，技能太多，設定也太多。Waza 只留 8 個技能，每個只管一件事、觸發條件清楚，都是在 7 個專案、300 多次真實會話裡磨出來的，每條避坑指南都對應一次真實翻車。`/health` 技能就是從[這篇文章](https://tw93.fun/2026-03-12/claude.html)裡講的 Claude Code 六層框架長出來的
+Superpowers、gstack 這類工具很強，但也很重，技能太多，設定也太多。Waza 只留 8 個技能，每個只管一件事、觸發條件清楚，都是在 7 個專案、300 多次真實會話裡磨出來的，每條避坑指南都對應一次真實翻車。`/health` 技能就是從[這篇文章](https://tw93.fun/2026-03-12/claude.html)裡講的 Claude Code 六層框架長出來的。
 
-Waza 和另外兩款工具組成三部曲，[Kaku](https://github.com/tw93/Kaku)（書く）負責寫程式碼，[Waza](https://github.com/tw93/Waza)（技）負責磨習慣，[Kami](https://github.com/tw93/Kami)（紙）負責出文件，可以把它們看成一家人，Kaku 是爸爸，Waza 是姊姊，Kami 是妹妹
+Waza 和另外兩款工具組成三部曲，[Kaku](https://github.com/tw93/Kaku)（書く）負責寫程式碼，[Waza](https://github.com/tw93/Waza)（技）負責磨習慣，[Kami](https://github.com/tw93/Kami)（紙）負責出文件，可以把它們看成一家人，Kaku 是爸爸，Waza 是姊姊，Kami 是妹妹。
 
 ## 移除
 
@@ -157,12 +157,12 @@ rm -f ~/.claude/rules/waza-routing.md
 rm -f ~/.claude/rules/clarity.md
 ```
 
-狀態列還需從 `~/.claude/settings.json` 刪掉 `statusLine` 條目，Claude Desktop 直接在 Customize > Skills 中刪除 Waza，Codex 規則安裝從 `~/.codex/AGENTS.md` 中移除對應的 Waza 標記塊，Antigravity 從 `~/.gemini/antigravity-cli/rules/` 刪除對應規則檔案，其他工具從自訂指令中移除即可，移除後開啟新會話生效
+狀態列還需從 `~/.claude/settings.json` 刪掉 `statusLine` 條目，Claude Desktop 直接在 Customize > Skills 中刪除 Waza，裝過 Codex 規則的，從 `~/.codex/AGENTS.md` 刪掉對應的 Waza 標記塊，Antigravity 從 `~/.gemini/antigravity-cli/rules/` 刪除對應規則檔案，其他工具從自訂指令中移除即可，移除後開啟新會話生效。
 
 ## 支持
 
 - 最直接的支持方式是購買 [Mole for Mac](https://mole.fit)，這是我開發的 Mac 清理應用
-- 如果 Waza 對你有幫助，歡迎點個 Star，[分享給朋友](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20AI%20coding%20skills%20for%20the%20complete%20engineer.)，或者提交 Issue 與 PR
+- 如果 Waza 對你有幫助，歡迎點個 Star，[分享給朋友](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)，或者提交 Issue 與 PR
 - 我養了兩隻貓，湯圓和可樂，如果 Waza 幫到了你，可以給她們加個 <a href="https://cats.tw93.fun?name=Waza" target="_blank">罐頭 🥩</a>
 
 <details>

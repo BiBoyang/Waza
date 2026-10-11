@@ -29,7 +29,7 @@ Chaque réflexe d'ingénierie correspond à une compétence dédiée, un dossier
 | [`/write`](skills/write/SKILL.md) | Rédaction et révision | Réécrit les textes chinois et anglais pour un rendu naturel et supprime le ton robotique des IA. |
 | [`/learn`](skills/learn/SKILL.md) | Explorer un nouveau sujet | Recherche en six étapes : collecter, digérer, structurer, rédiger, affiner, puis relire et publier. |
 | [`/read`](skills/read/SKILL.md) | Lire des URL ou des PDF | Extrait un résumé concis ou du Markdown propre pour référence ou sauvegarde. |
-| [`/health`](skills/health/SKILL.md) | Audit des agents IA | Audite la configuration des agents et les dérives d'instructions, avec un premier passage synthétique et économe en tokens avant l'inspection approfondie. |
+| [`/health`](skills/health/SKILL.md) | Audit des agents IA | Vérifie Codex, Claude Code, les instructions du projet, la sortie des vérificateurs et la maintenabilité par l'IA, avec un premier passage synthétique et économe en tokens avant l'inspection approfondie. |
 
 ## Installation
 
@@ -140,7 +140,7 @@ Les règles optionnelles s'appliquent au-delà des appels de compétences une fo
 
 ## Pourquoi Waza
 
-Waza (技, わざ) désigne dans les arts martiaux une technique répétée jusqu'à devenir un réflexe. Un bon ingénieur fait bien plus qu'écrire du code : il challenge les besoins, remonte jusqu'à la cause racine, relit ses propres diffs et lit les sources primaires. L'IA peut produire tout cela, mais sans structure, le résultat dérive vers un travail générique et imprécis. Chaque compétence Waza fixe le résultat attendu, les lignes rouges et la façon de vérifier, puis laisse le modèle choisir le chemin. À mesure que les modèles progressent, cette retenue rapporte des intérêts composés.
+Waza (技, わざ) désigne dans les arts martiaux une technique répétée jusqu'à devenir un réflexe. Un bon ingénieur fait bien plus qu'écrire du code : il remet en question les besoins, remonte jusqu'à la cause racine, relit ses propres diffs et lit les sources primaires. L'IA peut produire tout cela, mais sans structure, le résultat dérive vers un travail générique et imprécis. Chaque compétence Waza fixe le résultat attendu, les lignes rouges et la façon de vérifier, puis laisse le modèle choisir le chemin. À mesure que les modèles progressent, cette retenue rapporte des intérêts composés.
 
 Des outils comme Superpowers et gstack sont puissants mais lourds : trop de compétences, trop de configuration. Waza reste sobre, huit compétences pour les réflexes qui comptent vraiment, chacune avec une seule mission et un déclencheur clair. Elles sont issues de vrais projets et affinées sur plus de 300 sessions dans 7 projets, et chaque mise en garde vient d'un échec réel. La compétence `/health` est née du cadre Claude Code en six couches présenté dans [cet article](https://tw93.fun/en/2026-03-12/claude.html).
 
@@ -162,7 +162,7 @@ Pour la barre d'état, supprimez aussi l'entrée `statusLine` de `~/.claude/sett
 ## Soutenir le projet
 
 - Le moyen le plus direct est d'acheter [Mole for Mac](https://mole.fit), mon application de nettoyage pour Mac
-- Si Waza vous est utile, donnez-lui une étoile, [partagez-le](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20AI%20coding%20skills%20for%20the%20complete%20engineer.) ou ouvrez une issue ou une PR
+- Si Waza vous est utile, donnez-lui une étoile, [partagez-le](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) ou ouvrez une issue ou une PR
 - Vous pouvez aussi offrir une <a href="https://cats.tw93.fun?name=Waza" target="_blank">boîte de pâtée 🥩</a> à mes deux chats, TangYuan et Coke
 
 <details>
