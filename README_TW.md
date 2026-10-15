@@ -127,8 +127,7 @@ Codex 顯示剩餘額度，上方 Claude Code 狀態列顯示已用百分比（�
   bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
 
   # 日常清晰表達：術語統一、條件明確、保留不確定性
-  # Clarity 規則目前在 main 分支可用，尚未進入正式版
-  WAZA_REF=main bash "$WAZA_RULE_SCRIPT" clarity claude-code
+  bash "$WAZA_RULE_SCRIPT" clarity claude-code
 )
 ```
 

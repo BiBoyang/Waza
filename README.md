@@ -127,8 +127,7 @@ Optional rules apply beyond skill invocations when installed into your agent's p
   bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
 
   # Clear everyday replies: consistent terms, explicit conditions, preserved uncertainty
-  # Clarity is available on main; it is not in the current release yet.
-  WAZA_REF=main bash "$WAZA_RULE_SCRIPT" clarity claude-code
+  bash "$WAZA_RULE_SCRIPT" clarity claude-code
 )
 ```
 

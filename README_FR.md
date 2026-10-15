@@ -127,8 +127,7 @@ Les règles optionnelles s'appliquent au-delà des appels de compétences une fo
   bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
 
   # Réponses claires au quotidien : termes cohérents, conditions explicites, incertitude préservée
-  # Clarity est disponible sur main, mais pas encore dans la version publiée
-  WAZA_REF=main bash "$WAZA_RULE_SCRIPT" clarity claude-code
+  bash "$WAZA_RULE_SCRIPT" clarity claude-code
 )
 ```
 

@@ -127,8 +127,7 @@ Codex는 남은 한도를, 위의 Claude Code 상태 표시줄은 사용한 비�
   bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
 
   # 명확한 일상 답변: 일관된 용어, 명시적인 조건, 불확실성 유지
-  # Clarity는 main 브랜치에서 사용할 수 있으며 아직 정식 릴리스에는 포함되지 않았습니다
-  WAZA_REF=main bash "$WAZA_RULE_SCRIPT" clarity claude-code
+  bash "$WAZA_RULE_SCRIPT" clarity claude-code
 )
 ```
 

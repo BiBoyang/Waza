@@ -127,8 +127,7 @@ Codex は残りの枠を、上の Claude Code ステータスラインは使用�
   bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
 
   # 明快な日常回答：用語の統一、条件の明示、不確かさの保持
-  # Clarity は main ブランチで利用でき、現行リリースにはまだ含まれていません
-  WAZA_REF=main bash "$WAZA_RULE_SCRIPT" clarity claude-code
+  bash "$WAZA_RULE_SCRIPT" clarity claude-code
 )
 ```
 

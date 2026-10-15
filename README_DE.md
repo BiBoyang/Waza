@@ -127,8 +127,7 @@ Optionale Regeln wirken auch außerhalb von Skill-Aufrufen, sobald sie in den da
   bash "$WAZA_RULE_SCRIPT" waza-routing claude-code
 
   # Klare Alltagsantworten: einheitliche Begriffe, explizite Bedingungen, Unsicherheit bleibt erhalten
-  # Clarity ist auf main verfügbar, aber noch nicht im aktuellen Release
-  WAZA_REF=main bash "$WAZA_RULE_SCRIPT" clarity claude-code
+  bash "$WAZA_RULE_SCRIPT" clarity claude-code
 )
 ```
 
