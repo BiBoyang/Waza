@@ -33,7 +33,7 @@ You have eight skills available. Match the user's intent to the right skill, rea
 If the message could match multiple skills, use these disambiguation rules:
 
 1. Most specific wins: `/ui` is more specific than `/think` for UI decisions.
-2. URL in message: start with `/read`. If the content is research material, chain to `/learn`.
+2. Request to read, fetch, quote, cite, convert, or save a URL/PDF: start with `/read`. If the content is research material, chain to `/learn`.
 3. Code already done vs. code broken: done/PR -> `/check`; error/broken -> `/hunt`.
 4. Config/maintainability vs. code: Codex/Claude misbehaving, hooks/MCP, `/health` token usage, AI coding code rot, unclear context, missing verification, or stale verifier output -> `/health`; user code errors -> `/hunt`.
 5. Release action vs. release prose: commit/tag/publish/push/release reactions/close issue -> `/check`; write release notes/changelog text -> `/write`.
