@@ -65,7 +65,7 @@
     },
     {
       "name": "waza-read",
-      "description": "Fetches URLs and PDFs, then summarizes or returns clean Markdown. Use when asked to read, fetch, quote, cite, convert, or save a URL or PDF. Not for local text files already in the repo.",
+      "description": "Fetches URLs and PDFs, then summarizes or returns clean Markdown; can also search the web through DeepSeek when built-in search is thin. Use when asked to read, fetch, quote, cite, convert, or save a URL or PDF. Not for local text files already in the repo.",
       "version": "3.40.0",
       "category": "development",
       "source": "./skills/read",
