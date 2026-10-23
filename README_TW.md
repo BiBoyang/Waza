@@ -164,13 +164,11 @@ rm -f ~/.claude/rules/clarity.md
 - 如果 Waza 對你有幫助，歡迎點個 Star，[分享給朋友](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)，或者提交 Issue 與 PR
 - 我養了兩隻貓，湯圓和可樂，如果 Waza 幫到了你，可以給她們加個 <a href="https://cats.tw93.fun?name=Waza" target="_blank">罐頭 🥩</a>
 
-<details>
-<summary>已經贊助過的可愛朋友們 🐱</summary>
-<br/>
+已經贊助過的可愛朋友們 🐱
+
 <div align="center">
   <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
-</details>
 
 ## 授權條款
 

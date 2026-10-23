@@ -164,13 +164,11 @@ Für die Statusleiste entfernst du außerdem den Eintrag `statusLine` aus `~/.cl
 - Wenn dir Waza hilft, freue ich mich über einen Stern, eine [Weiterempfehlung](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) oder ein Issue bzw. einen PR
 - Du kannst auch meinen beiden Katzen TangYuan und Coke eine <a href="https://cats.tw93.fun?name=Waza" target="_blank">Dose Futter 🥩</a> spendieren
 
-<details>
-<summary>Diese lieben Menschen haben es schon getan 🐱</summary>
-<br/>
+Diese lieben Menschen haben es schon getan 🐱
+
 <div align="center">
   <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
-</details>
 
 ## Lizenz
 

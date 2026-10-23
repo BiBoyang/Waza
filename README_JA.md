@@ -164,13 +164,11 @@ rm -f ~/.claude/rules/clarity.md
 - Waza が役に立った場合は、Star を付けたり、[共有](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)したり、Issue や PR を送ったりしていただけるとうれしいです
 - 飼い猫の「湯円（TangYuan）」と「コーラ（Coke）」に <a href="https://cats.tw93.fun?name=Waza" target="_blank">おやつ 🥩</a> をご馳走することもできます
 
-<details>
-<summary>スポンサー一覧 🐱</summary>
-<br/>
+スポンサー一覧 🐱
+
 <div align="center">
   <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
-</details>
 
 ## ライセンス
 

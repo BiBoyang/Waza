@@ -164,13 +164,11 @@ rm -f ~/.claude/rules/clarity.md
 - Waza가 도움이 되었다면 Star를 눌러 주시거나, [공유](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)해 주시거나, Issue나 PR을 남겨 주세요
 - 고양이 탕위안(TangYuan)과 콜라(Coke)에게 <a href="https://cats.tw93.fun?name=Waza" target="_blank">간식 🥩</a>을 선물할 수도 있습니다
 
-<details>
-<summary>후원해 주신 분들 🐱</summary>
-<br/>
+후원해 주신 분들 🐱
+
 <div align="center">
   <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
-</details>
 
 ## 라이선스
 

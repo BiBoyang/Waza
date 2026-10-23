@@ -164,13 +164,11 @@ Pour la barre d'état, supprimez aussi l'entrée `statusLine` de `~/.claude/sett
 - Si Waza vous est utile, donnez-lui une étoile, [partagez-le](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) ou ouvrez une issue ou une PR
 - Vous pouvez aussi offrir une <a href="https://cats.tw93.fun?name=Waza" target="_blank">boîte de pâtée 🥩</a> à mes deux chats, TangYuan et Coke
 
-<details>
-<summary>Remerciements aux sponsors 🐱</summary>
-<br/>
+Remerciements aux sponsors 🐱
+
 <div align="center">
   <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
-</details>
 
 ## Licence
 

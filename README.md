@@ -164,13 +164,11 @@ For the statusline, also remove the `statusLine` entry from `~/.claude/settings.
 - If Waza helped you, give it a star, [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.), or open an issue or PR
 - I have two cats, TangYuan and Coke, and if Waza has been helpful to you, you can feed them <a href="https://cats.tw93.fun?name=Waza" target="_blank">canned food 🥩</a>
 
-<details>
-<summary>These lovely people already did 🐱</summary>
-<br/>
+These lovely people already did 🐱
+
 <div align="center">
   <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
-</details>
 
 ## License
 
