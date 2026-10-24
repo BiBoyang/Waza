@@ -167,7 +167,7 @@ For the statusline, also remove the `statusLine` entry from `~/.claude/settings.
 These lovely people already did 🐱
 
 <div align="center">
-  <a href="https://cats.tw93.fun?name=Waza"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
+  <a href="https://cats.tw93.fun?name=Waza"><img src="https://raw.githubusercontent.com/tw93/sponsors/main/assets/sponsors.svg" width="1000" loading="lazy" /></a>
 </div>
 
 ## License
