@@ -22,6 +22,7 @@ fi
 # Required helper scripts are bundled.
 for required in \
   skills/check/scripts/release_gate.py \
+  skills/check/scripts/incident_ledger.py \
   skills/read/scripts/fetch.sh \
   skills/health/scripts/block-pipe-to-shell.py \
   skills/health/scripts/check-agent-context.sh \
