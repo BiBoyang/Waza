@@ -68,6 +68,8 @@ You decide how skills chain together. Each skill stops at the requested outcome;
 - **Ship a fix**: `/hunt` to find the root cause, fix it, then `/check` to review the changes and, when needed, handle release, publish, push, and issue follow-through
 - **Research and write**: `/read` to fetch sources, `/learn` to synthesize, `/write` to polish
 
+The stages a task moves through, and the rules each one holds, are in the [AI coding rules](https://github.com/tw93/Waza/blob/main/docs/ai-coding-rules.md).
+
 ## Project Context
 
 Waza ships only generic engineering habits. `/check` becomes project-aware at runtime by reading the target repository's public context (READMEs, package manifests, Makefiles, CI workflows) and your task constraints, never private paths, credentials, or tokens. See [`skills/check/references/project-context.md`](skills/check/references/project-context.md) for the review context template.
@@ -161,7 +163,7 @@ For the statusline, also remove the `statusLine` entry from `~/.claude/settings.
 ## Support
 
 - The most direct way to support me is getting [Mole for Mac](https://mole.fit), my paid Mac cleanup app
-- If Waza helped you, give it a star, [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.), or open an issue or PR
+- If Waza helped you, give it a star, [share it](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.), or open an issue or PR after reading [SCOPE.md](https://github.com/tw93/Waza/blob/main/SCOPE.md)
 - I have two cats, TangYuan and Coke, and if Waza has been helpful to you, you can feed them <a href="https://cats.tw93.fun?name=Waza" target="_blank">canned food 🥩</a>
 
 These lovely people already did 🐱

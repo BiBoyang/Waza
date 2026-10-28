@@ -68,6 +68,8 @@ codex plugin add waza@waza
 - **不具合の修正**：`/hunt` で原因を特定し、修正してから `/check` で変更差分をレビューし、必要に応じてリリース
 - **調査と執筆**：`/read` で資料を集め、`/learn` で体系化し、`/write` で文章を磨く
 
+要件から振り返りまで、各段階で守るルールは [AI コーディングルール](https://github.com/tw93/Waza/blob/main/docs/ai-coding-rules.md) にまとめています。
+
 ## プロジェクトコンテキスト
 
 Waza は汎用的なエンジニアリングの型のみを提供します。`/check` は実行時に対象リポジトリの公開情報（README、パッケージ定義、Makefile、CI設定）とタスク要件を読み取り、非公開のパスや認証情報、トークンは読みません。レビュー用コンテキストのテンプレートは [`skills/check/references/project-context.md`](skills/check/references/project-context.md) を参照してください。
@@ -161,7 +163,7 @@ rm -f ~/.claude/rules/clarity.md
 ## サポート
 
 - 私が作った有料の Mac クリーナー [Mole for Mac](https://mole.fit) を使っていただくのが、いちばん直接的な支援になります
-- Waza が役に立った場合は、Star を付けたり、[共有](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)したり、Issue や PR を送ったりしていただけるとうれしいです
+- Waza が役に立った場合は、Star を付けたり、[共有](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)したり、[SCOPE.md](https://github.com/tw93/Waza/blob/main/SCOPE.md) を読んだうえで Issue や PR を送ったりしていただけるとうれしいです
 - 飼い猫の「湯円（TangYuan）」と「コーラ（Coke）」に <a href="https://cats.tw93.fun?name=Waza" target="_blank">おやつ 🥩</a> をご馳走することもできます
 
 スポンサー一覧 🐱

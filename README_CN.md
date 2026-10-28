@@ -68,6 +68,8 @@ codex plugin add waza@waza
 - **排查修复**：`/hunt` 查清根因，动手修复，再用 `/check` 审查改动，需要时一并发布
 - **调研成文**：`/read` 读取素材，`/learn` 消化梳理，`/write` 润色文字
 
+一件事从需求到复盘的每个阶段该守什么规则，见 [AI Coding 军规](https://github.com/tw93/Waza/blob/main/docs/ai-coding-rules.zh.md)。
+
 ## 项目上下文
 
 Waza 只沉淀通用的工程习惯，`/check` 运行时从目标仓库公开的 README、包清单、Makefile、CI 配置和你的任务要求里提炼约束，绝不读取私有路径、凭证或 Token，具体上下文模板可参考 [`skills/check/references/project-context.md`](skills/check/references/project-context.md)。
@@ -161,7 +163,7 @@ rm -f ~/.claude/rules/clarity.md
 ## 支持
 
 - 最直接的支持方式是购买 [Mole for Mac](https://mole.fit)，这是我开发的 Mac 清理应用
-- 如果 Waza 对你有帮助，欢迎点个 Star，[分享给朋友](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)，或者提交 Issue 与 PR
+- 如果 Waza 对你有帮助，欢迎点个 Star，[分享给朋友](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.)，或者在读过 [SCOPE.md](https://github.com/tw93/Waza/blob/main/SCOPE.md) 后提交 Issue 与 PR
 - 我养了两只猫，汤圆和可乐，如果 Waza 帮到了你，可以给她们加个 <a href="https://cats.tw93.fun?name=Waza" target="_blank">罐头 🥩</a>
 
 已经赞助过的可爱朋友们 🐱

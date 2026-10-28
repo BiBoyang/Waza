@@ -68,6 +68,8 @@ Vous décidez comment combiner les compétences. Chaque compétence s'arrête un
 - **Correction de bogue** : `/hunt` pour trouver la cause, puis correction, puis `/check` pour revoir les diffs et publier si besoin
 - **Recherche et rédaction** : `/read` pour collecter, `/learn` pour structurer, `/write` pour polir
 
+Les règles à suivre à chaque étape, de l'idée à la rétrospective, sont dans les [règles du code assisté par IA](https://github.com/tw93/Waza/blob/main/docs/ai-coding-rules.md).
+
 ## Contexte du projet
 
 Waza n'embarque que des méthodes d'ingénierie universelles. `/check` lit au moment de l'exécution les fichiers publics du dépôt cible (README, manifestes, Makefile, CI) et vos contraintes, sans jamais accéder à des chemins privés, identifiants ou tokens. Le modèle de contexte de revue se trouve dans [`skills/check/references/project-context.md`](skills/check/references/project-context.md).
@@ -161,7 +163,7 @@ Pour la barre d'état, supprimez aussi l'entrée `statusLine` de `~/.claude/sett
 ## Soutenir le projet
 
 - Le moyen le plus direct est d'acheter [Mole for Mac](https://mole.fit), mon application de nettoyage pour Mac
-- Si Waza vous est utile, donnez-lui une étoile, [partagez-le](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) ou ouvrez une issue ou une PR
+- Si Waza vous est utile, donnez-lui une étoile, [partagez-le](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) ou ouvrez une issue ou une PR après avoir lu [SCOPE.md](https://github.com/tw93/Waza/blob/main/SCOPE.md)
 - Vous pouvez aussi offrir une <a href="https://cats.tw93.fun?name=Waza" target="_blank">boîte de pâtée 🥩</a> à mes deux chats, TangYuan et Coke
 
 Remerciements aux sponsors 🐱

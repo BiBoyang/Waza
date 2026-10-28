@@ -68,6 +68,8 @@ Du entscheidest, wie Skills kombiniert werden. Jeder Skill stoppt nach Erreichen
 - **Bugfix**: `/hunt` findet die Ursache, dann beheben, dann mit `/check` die Diffs prüfen und bei Bedarf releasen
 - **Recherche**: `/read` holt das Material, `/learn` strukturiert es, `/write` formuliert aus
 
+Welche Regeln in welcher Phase gelten, von der Idee bis zur Retro, steht in den [AI-Coding-Regeln](https://github.com/tw93/Waza/blob/main/docs/ai-coding-rules.md).
+
 ## Projekt-Kontext
 
 Waza liefert universelle Entwicklergewohnheiten. `/check` liest zur Laufzeit nur öffentliche Projektdateien (README, Paketdefinitionen, Makefile, CI-Workflows) und deine Vorgaben, niemals private Pfade, Zugangsdaten oder Tokens. Die Vorlage für den Review-Kontext findest du in [`skills/check/references/project-context.md`](skills/check/references/project-context.md).
@@ -161,7 +163,7 @@ Für die Statusleiste entfernst du außerdem den Eintrag `statusLine` aus `~/.cl
 ## Unterstützung
 
 - Die direkteste Unterstützung ist der Kauf meiner Mac-Bereinigungs-App [Mole for Mac](https://mole.fit)
-- Wenn dir Waza hilft, freue ich mich über einen Stern, eine [Weiterempfehlung](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) oder ein Issue bzw. einen PR
+- Wenn dir Waza hilft, freue ich mich über einen Stern, eine [Weiterempfehlung](https://twitter.com/intent/tweet?url=https://github.com/tw93/Waza&text=Waza%20-%20Tw93%27s%20engineering%20habits%2C%20turned%20into%20your%20skills.) oder ein Issue bzw. einen PR, nachdem du [SCOPE.md](https://github.com/tw93/Waza/blob/main/SCOPE.md) gelesen hast
 - Du kannst auch meinen beiden Katzen TangYuan und Coke eine <a href="https://cats.tw93.fun?name=Waza" target="_blank">Dose Futter 🥩</a> spendieren
 
 Diese lieben Menschen haben es schon getan 🐱
